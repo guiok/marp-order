@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>marp-order</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f3f4f6; --panel: #ffffff; --text: #1f2933; --muted: #6b7280;
+    --line: #d9dde3; --accent: #2563eb; --accent-soft: #dbeafe;
+    --warn: #b45309; --warn-soft: #fef3c7; --danger: #b91c1c; --danger-soft: #fee2e2;
+    --w: 260px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15181d; --panel: #20242b; --text: #e5e7eb; --muted: #9aa3af;
+      --line: #343a44; --accent: #60a5fa; --accent-soft: #1e3a5f;
+      --warn: #fbbf24; --warn-soft: #453508; --danger: #f87171; --danger-soft: #4c1d1d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+           border-bottom: 1px solid var(--line); padding: 8px 16px;
+           display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  header h1 { font-size: 15px; margin: 0; max-width: 34ch; overflow: hidden;
+              text-overflow: ellipsis; white-space: nowrap; }
+  #info { color: var(--muted); margin-right: auto; }
+  #info .dirty { color: var(--warn); font-weight: 600; }
+  button { font: inherit; color: var(--text); background: var(--panel);
+           border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  label.size { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .banner { margin: 10px 16px 0; padding: 8px 12px; border-radius: 6px;
+            display: flex; align-items: center; gap: 12px; }
+  .banner[hidden] { display: none; }
+  .banner span { flex: 1; }
+  .banner.warn { background: var(--warn-soft); color: var(--warn); }
+  .banner.danger { background: var(--danger-soft); color: var(--danger); }
+  #grid { position: relative; display: grid; gap: 14px; padding: 16px;
+          grid-template-columns: repeat(auto-fill, minmax(var(--w), 1fr)); user-select: none; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 8px;
+          overflow: hidden; cursor: grab; display: flex; flex-direction: column; }
+  .card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .card.dragging { opacity: .35; }
+  .card img { display: block; width: 100%; height: auto; background: #fff; pointer-events: none; }
+  .card .text { aspect-ratio: 16 / 9; padding: 10px 12px; overflow: hidden; white-space: pre-wrap;
+                font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+  .card footer { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px;
+                 border-top: 1px solid var(--line); }
+  .num { font-weight: 700; min-width: 1.6em; }
+  .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title.empty { color: var(--muted); font-style: italic; }
+  .was { color: var(--accent); font-size: 12px; white-space: nowrap; }
+  .flag { color: var(--warn); cursor: help; }
+  #bar { position: absolute; width: 4px; border-radius: 2px; background: var(--accent);
+         pointer-events: none; display: none; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+           background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 6px;
+           opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  #toast.show { opacity: 1; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(900px, 94vw);
+           background: var(--panel); color: var(--text); }
+  dialog::backdrop { background: rgba(0, 0, 0, .55); }
+  dialog img { display: block; width: 100%; }
+  dialog pre { margin: 0; padding: 12px 16px; max-height: 40vh; overflow: auto; white-space: pre-wrap;
+               font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; border-top: 1px solid var(--line); }
+  dialog form { padding: 8px 16px; text-align: right; border-top: 1px solid var(--line); }
+  .help { color: var(--muted); padding: 0 16px 20px; font-size: 12px; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--panel); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="file"></h1>
+  <span id="info"></span>
+  <label class="size">Tamanho <input id="size" type="range" min="140" max="520" step="20" value="260"></label>
+  <button id="undo" title="Desfazer (Ctrl+Z)">↶ Desfazer</button>
+  <button id="redo" title="Refazer (Ctrl+Y)">↷ Refazer</button>
+  <button id="dup" title="Duplicar selecionadas (Ctrl+D)">Duplicar</button>
+  <button id="del" title="Remover selecionadas (Delete)">Remover</button>
+  <button id="discard" title="Voltar à ordem gravada no arquivo">Descartar</button>
+  <button id="save" class="primary" title="Gravar a nova ordem no arquivo (Ctrl+S)">Salvar</button>
+</header>
+
+<div id="external" class="banner warn" hidden>
+  <span>O arquivo foi alterado fora do marp-order.</span>
+  <button id="reload">Recarregar do disco</button>
+</div>
+<div id="mismatch" class="banner danger" hidden><span></span></div>
+<div id="thumbnote" class="banner warn" hidden><span></span><button id="rethumb">Tentar de novo</button></div>
+<div id="offline" class="banner danger" hidden><span>O marp-order foi encerrado. Inicie-o novamente para continuar.</span></div>
+
+<main id="grid"><div id="bar"></div></main>
+
+<p class="help">
+  Arraste para reordenar · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+clique seleciona várias ·
+  <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> move a seleção · duplo clique amplia ·
+  <span class="flag">⚠</span> indica lâmina cujo efeito depende da posição (passe o mouse para ver).
+</p>
+
+<dialog id="zoom">
+  <img alt="">
+  <pre></pre>
+  <form method="dialog"><button>Fechar</button></form>
+</dialog>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+const grid = $('#grid'), bar = $('#bar');
+
+let S = null;            // estado vindo do servidor
+let items = [];          // ordem atual: [{k: chave do cartão, id: lâmina}]
+let sel = new Set();     // chaves selecionadas
+let anchor = null;       // último cartão clicado
+let undo = [], redo = [];
+let nextKey = 1;
+let offline = false;
+const cards = new Map(); // chave -> elemento
+
+const post = (url, body) => fetch(url, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'X-Marp-Order': '1' },
+  body: JSON.stringify(body || {}),
+});
+
+function toast(message) {
+  const el = $('#toast');
+  el.textContent = message;
+  el.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+const ids = () => items.map((it) => it.id);
+const sameOrder = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+const isDirty = () => !sameOrder(ids(), S.disk_order);
+const selected = () => items.filter((it) => sel.has(it.k));
+const cardList = () => [...grid.querySelectorAll('.card')];
+
+function adopt(state) {
+  S = state;
+  items = S.disk_order.map((id) => ({ k: nextKey++, id }));
+  sel = new Set(); anchor = null; undo = []; redo = [];
+  cards.forEach((el) => el.remove());
+  cards.clear();
+  $('#file').textContent = S.file;
+  $('#file').title = S.path;
+  document.title = S.file + ' — marp-order';
+  render();
+  showStatus(S);
+}
+
+function commit(next) {
+  if (sameOrder(next.map((it) => it.k), items.map((it) => it.k))) return;
+  undo.push(items);
+  redo = [];
+  items = next;
+  render();
+}
+
+function thumbSrc(id) {
+  return `/thumb/${id}?g=${S.generation}&v=${S.thumbs.version}`;
+}
+
+function makeCard(item) {
+  const slide = S.slides[item.id];
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.draggable = true;
+  el.dataset.k = item.k;
+
+  const face = document.createElement('div');
+  face.className = 'face';
+  const foot = document.createElement('footer');
+  const num = document.createElement('span'); num.className = 'num';
+  const title = document.createElement('span'); title.className = 'title';
+  title.textContent = slide.title || '(sem título)';
+  title.title = slide.title;
+  if (!slide.title) title.classList.add('empty');
+  const was = document.createElement('span'); was.className = 'was';
+  foot.append(num, title);
+  if (slide.warn.length) {
+    const flag = document.createElement('span');
+    flag.className = 'flag';
+    flag.textContent = '⚠';
+    flag.title = slide.warn.join('\n');
+    foot.append(flag);
+  }
+  foot.append(was);
+  el.append(face, foot);
+  fillFace(el, item.id);
+  return el;
+}
+
+function fillFace(el, id) {
+  const face = el.querySelector('.face');
+  const want = S.thumbs.have[id] ? thumbSrc(id) : '';
+  if (face.dataset.src === want && face.firstChild) return;
+  face.dataset.src = want;
+  if (want) {
+    const img = document.createElement('img');
+    img.src = want; img.alt = ''; img.loading = 'lazy'; img.draggable = false;
+    face.replaceChildren(img);
+  } else {
+    const text = document.createElement('div');
+    text.className = 'text';
+    text.textContent = S.slides[id].text.slice(0, 600) || '(lâmina vazia)';
+    face.replaceChildren(text);
+  }
+}
+
+function render() {
+  const alive = new Set(items.map((it) => it.k));
+  for (const [k, el] of cards) if (!alive.has(k)) { el.remove(); cards.delete(k); }
+  sel = new Set([...sel].filter((k) => alive.has(k)));
+
+  items.forEach((item, i) => {
+    let el = cards.get(item.k);
+    if (!el) { el = makeCard(item); cards.set(item.k, el); }
+    el.querySelector('.num').textContent = i + 1;
+    const origin = S.disk_order.indexOf(item.id);
+    const was = el.querySelector('.was');
+    was.textContent = origin < 0 ? 'nova' : origin !== i ? `era ${origin + 1}` : '';
+    if (grid.children[i + 1] !== el) grid.insertBefore(el, grid.children[i + 1] || null);
+  });
+  renderSel();
+}
+
+function renderSel() {
+  for (const [k, el] of cards) el.classList.toggle('sel', sel.has(k));
+  const dirty = isDirty();
+  const removed = S.disk_order.filter((id) => !items.some((it) => it.id === id)).length;
+  const info = $('#info');
+  info.textContent = `${items.length} lâminas` + (sel.size > 1 ? ` · ${sel.size} selecionadas` : '');
+  if (dirty) {
+    const mark = document.createElement('span');
+    mark.className = 'dirty';
+    mark.textContent = ' · alterações não salvas' + (removed ? ` (${removed} removida${removed > 1 ? 's' : ''})` : '');
+    info.append(mark);
+  }
+  $('#save').disabled = !dirty;
+  $('#discard').disabled = !dirty;
+  $('#undo').disabled = !undo.length;
+  $('#redo').disabled = !redo.length;
+  $('#dup').disabled = $('#del').disabled = !sel.size;
+}
+
+function showStatus(status) {
+  $('#external').hidden = !status.external_change;
+  const t = status.thumbs;
+  $('#mismatch').hidden = t.state !== 'mismatch';
+  $('#mismatch span').textContent = 'Atenção: ' + t.message +
+    '. A divisão das lâminas pode estar incorreta — confira o arquivo antes de salvar uma nova ordem.';
+  $('#thumbnote').hidden = t.state !== 'error';
+  $('#thumbnote span').textContent = 'Miniaturas indisponíveis (' + t.message + '). Mostrando o texto das lâminas.';
+  $('#save').textContent = t.state === 'rendering' ? 'Salvar (gerando miniaturas…)' : 'Salvar';
+}
+
+// ---- operações sobre a ordem -------------------------------------------
+
+/** Move as lâminas selecionadas para a posição `at`, contada entre as não selecionadas. */
+function moveSelection(at) {
+  const moving = selected();
+  const rest = items.filter((it) => !sel.has(it.k));
+  at = Math.max(0, Math.min(rest.length, at));
+  commit([...rest.slice(0, at), ...moving, ...rest.slice(at)]);
+}
+
+function shiftSelection(delta) {
+  const first = items.findIndex((it) => sel.has(it.k));
+  if (first < 0) return;
+  const before = items.slice(0, first).filter((it) => !sel.has(it.k)).length;
+  moveSelection(before + delta);
+  cards.get(selected()[0].k).scrollIntoView({ block: 'nearest' });
+}
+
+function removeSelection() {
+  if (sel.size) commit(items.filter((it) => !sel.has(it.k)));
+}
+
+function duplicateSelection() {
+  if (!sel.size) return;
+  const next = [], fresh = new Set();
+  for (const it of items) {
+    next.push(it);
+    if (sel.has(it.k)) { const copy = { k: nextKey++, id: it.id }; next.push(copy); fresh.add(copy.k); }
+  }
+  sel = fresh;
+  commit(next);
+}
+
+function stepHistory(from, to) {
+  if (!from.length) return;
+  to.push(items);
+  items = from.pop();
+  render();
+}
+
+function select(k, event) {
+  if (event.shiftKey && anchor !== null) {
+    const a = items.findIndex((it) => it.k === anchor), b = items.findIndex((it) => it.k === k);
+    if (a >= 0) {
+      sel = new Set(items.slice(Math.min(a, b), Math.max(a, b) + 1).map((it) => it.k));
+      return renderSel();
+    }
+  }
+  if (event.ctrlKey || event.metaKey) {
+    sel.has(k) ? sel.delete(k) : sel.add(k);
+  } else {
+    sel = new Set([k]);
+  }
+  anchor = k;
+  renderSel();
+}
+
+// ---- arrastar e soltar ---------------------------------------------------
+
+function dropIndex(x, y) {
+  let n = 0;
+  for (const el of cardList()) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < y || (r.top <= y && r.left + r.width / 2 < x)) n++;
+  }
+  return n;
+}
+
+function showBar(index, y) {
+  const list = cardList(), prev = list[index - 1], next = list[index];
+  const g = grid.getBoundingClientRect();
+  let r, x;
+  const prevRect = prev && prev.getBoundingClientRect();
+  if (prevRect && (!next || (prevRect.top <= y && y <= prevRect.bottom))) {
+    r = prevRect; x = r.right + 5;
+  } else if (next) {
+    r = next.getBoundingClientRect(); x = r.left - 9;
+  } else {
+    return;
+  }
+  Object.assign(bar.style, {
+    display: 'block', left: x - g.left + 'px', top: r.top - g.top + 'px', height: r.height + 'px',
+  });
+}
+
+let dragging = false;
+grid.addEventListener('dragstart', (e) => {
+  const el = e.target.closest('.card');
+  if (!el) return;
+  const k = Number(el.dataset.k);
+  if (!sel.has(k)) { sel = new Set([k]); anchor = k; renderSel(); }
+  dragging = true;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', String(sel.size));
+  requestAnimationFrame(() => {
+    if (dragging) sel.forEach((s) => cards.get(s)?.classList.add('dragging'));
+  });
+});
+grid.addEventListener('dragover', (e) => {
+  if (!dragging) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  showBar(dropIndex(e.clientX, e.clientY), e.clientY);
+});
+grid.addEventListener('drop', (e) => {
+  if (!dragging) return;
+  e.preventDefault();
+  const index = dropIndex(e.clientX, e.clientY);
+  moveSelection(items.slice(0, index).filter((it) => !sel.has(it.k)).length);
+});
+grid.addEventListener('dragend', () => {
+  dragging = false;
+  bar.style.display = 'none';
+  cards.forEach((el) => el.classList.remove('dragging'));
+});
+
+grid.addEventListener('click', (e) => {
+  const el = e.target.closest('.card');
+  if (el) return select(Number(el.dataset.k), e);
+  sel = new Set(); renderSel();
+});
+grid.addEventListener('dblclick', (e) => {
+  const el = e.target.closest('.card');
+  if (!el) return;
+  const item = items.find((it) => it.k === Number(el.dataset.k));
+  const img = $('#zoom img');
+  img.hidden = !S.thumbs.have[item.id];
+  if (!img.hidden) img.src = thumbSrc(item.id);
+  $('#zoom pre').textContent = S.slides[item.id].text || '(lâmina vazia)';
+  $('#zoom').showModal();
+});
+
+// ---- servidor --------------------------------------------------------------
+
+async function save(force) {
+  if (!isDirty()) return;
+  const order = ids();
+  const removed = S.disk_order.filter((id) => !order.includes(id)).length;
+  if (removed && !force && !confirm(`${removed} lâmina(s) serão removidas do arquivo. Continuar?`)) return;
+  let res;
+  try {
+    res = await post('/api/save', { generation: S.generation, order, force: !!force });
+  } catch {
+    return toast('Não foi possível falar com o marp-order.');
+  }
+  const body = await res.json();
+  if (res.status === 409 && body.error === 'external_change') {
+    if (confirm('O arquivo foi alterado fora do marp-order desde que foi aberto.\n\n' +
+        'OK: sobrescrever com a nova ordem (uma cópia do arquivo atual é guardada).\n' +
+        'Cancelar: não salvar.')) return save(true);
+    return;
+  }
+  if (!res.ok) return toast('Erro ao salvar: ' + body.error);
+  S.disk_order = body.disk_order;
+  S.thumbs = body.thumbs;
+  render();
+  showStatus(body);
+  toast(`Arquivo salvo. Backup do original: ${body.backup}`);
+}
+
+async function reload() {
+  if (isDirty() && !confirm('Recarregar descarta a reorganização ainda não salva. Continuar?')) return;
+  const res = await post('/api/reload');
+  const body = await res.json();
+  if (!res.ok) return toast('Erro ao recarregar: ' + body.error);
+  adopt(body);
+  toast('Arquivo recarregado do disco.');
+}
+
+async function poll() {
+  let status;
+  try {
+    status = await (await fetch('/api/status')).json();
+  } catch {
+    offline = true;
+    $('#offline').hidden = false;
+    return;
+  }
+  if (offline) { offline = false; $('#offline').hidden = true; }
+  if (status.generation !== S.generation) return adopt(await (await fetch('/api/state')).json());
+  const fresh = status.thumbs.version !== S.thumbs.version;
+  S.thumbs = status.thumbs;
+  if (fresh) for (const item of items) fillFace(cards.get(item.k), item.id);
+  showStatus(status);
+}
+
+// ---- controles ---------------------------------------------------------------
+
+$('#save').onclick = () => save(false);
+$('#undo').onclick = () => stepHistory(undo, redo);
+$('#redo').onclick = () => stepHistory(redo, undo);
+$('#dup').onclick = duplicateSelection;
+$('#del').onclick = removeSelection;
+$('#discard').onclick = () => commit(S.disk_order.map((id) => ({ k: nextKey++, id })));
+$('#reload').onclick = reload;
+$('#rethumb').onclick = () => post('/api/rethumb').then(poll);
+
+const size = $('#size');
+const applySize = () => document.documentElement.style.setProperty('--w', size.value + 'px');
+try { size.value = localStorage.getItem('marp-order-size') || size.value; } catch {}
+applySize();
+size.oninput = () => {
+  applySize();
+  try { localStorage.setItem('marp-order-size', size.value); } catch {}
+};
+
+document.addEventListener('keydown', (e) => {
+  if (!S || $('#zoom').open) return;
+  const mod = e.ctrlKey || e.metaKey;
+  const key = e.key.toLowerCase();
+  let handled = true;
+  if (mod && key === 's') save(false);
+  else if (mod && key === 'z' && !e.shiftKey) stepHistory(undo, redo);
+  else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) stepHistory(redo, undo);
+  else if (mod && key === 'd') duplicateSelection();
+  else if (mod && key === 'a') { sel = new Set(items.map((it) => it.k)); renderSel(); }
+  else if (key === 'delete' || key === 'backspace') removeSelection();
+  else if (key === 'escape') { sel = new Set(); renderSel(); }
+  else if (e.altKey && key === 'arrowleft') shiftSelection(-1);
+  else if (e.altKey && key === 'arrowright') shiftSelection(1);
+  else if (e.altKey && key === 'home') moveSelection(0);
+  else if (e.altKey && key === 'end') moveSelection(items.length);
+  else if (key === 'arrowleft' || key === 'arrowright') {
+    const at = items.findIndex((it) => it.k === anchor);
+    const next = items[Math.max(0, Math.min(items.length - 1, at + (key === 'arrowleft' ? -1 : 1)))];
+    if (next) { sel = new Set([next.k]); anchor = next.k; renderSel(); cards.get(next.k).scrollIntoView({ block: 'nearest' }); }
+  }
+  else handled = false;
+  if (handled) e.preventDefault();
+});
+
+window.addEventListener('beforeunload', (e) => {
+  if (S && !offline && isDirty()) { e.preventDefault(); e.returnValue = ''; }
+});
+
+fetch('/api/state').then((r) => r.json()).then((state) => {
+  adopt(state);
+  setInterval(poll, 1500);
+});
+</script>
+</body>
+</html>

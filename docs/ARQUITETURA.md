@@ -1,0 +1,124 @@
+# Arquitetura
+
+O marp-order é um binário Rust que sobe um servidor HTTP em `127.0.0.1` e serve uma
+interface de página única. Todo o estado fica no processo; o navegador só envia a ordem
+desejada.
+
+```
+apresentacao.md ──► deck.rs (parse) ──► main.rs (estado + HTTP) ◄──► ui.html (navegador)
+        ▲                                   │         │
+        └──────── deck.rs (compose) ◄───────┘         └──► thumbs.rs ──► marp-cli ──► JPEGs
+```
+
+| Arquivo | Papel |
+|---|---|
+| `src/deck.rs` | Divide o arquivo em cabeçalho + lâminas e o remonta em outra ordem. Sem E/S. |
+| `src/main.rs` | Linha de comando, estado, rotas HTTP, backup e gravação atômica. |
+| `src/thumbs.rs` | Thread que chama o marp-cli e associa cada imagem a uma lâmina. |
+| `src/ui.html` | Interface (HTML, CSS e JavaScript puros), embutida no binário. |
+
+Dependências: `tiny_http` e `serde_json`.
+
+## Modelo de dados
+
+```rust
+Deck  { source, head, slides }          // head = BOM + front-matter
+Slide { lead, text, heading_start, lead_comment }
+```
+
+- `text` é o trecho exato do arquivo entre dois separadores.
+- `lead` é a linha separadora que precedia a lâmina (`---`, `***`…), como estava escrita.
+- `heading_start` indica lâmina aberta por um título de `headingDivider`, sem separador.
+
+As lâminas são identificadas pelo índice que tinham quando o arquivo foi lido. Esse índice
+não muda entre salvamentos — só quando o arquivo é recarregado do disco —, o que permite
+desfazer alterações mesmo depois de salvar.
+
+## Divisão das lâminas
+
+O parser não é um parser Markdown completo: ele percorre o arquivo linha a linha com o
+estado mínimo para decidir o que é separador. As regras reproduzem o comportamento do
+[Marpit](https://github.com/marp-team/marpit), que divide o deck nas réguas horizontais
+(`hr`) de nível superior do markdown-it.
+
+Uma linha é **separador** se for uma régua (`---`, `***`, `___`, `- - -`; três ou mais
+marcas, recuo de até 3 espaços) e **não** estiver em nenhum destes casos:
+
+| Caso | Exemplo |
+|---|---|
+| Dentro de bloco de código cercado | ` ``` ` … `---` … ` ``` ` |
+| Dentro de comentário, `<style>`, `<script>` ou `<pre>` | `<!--` … `---` … `-->` |
+| Sublinhado de título setext | `Título` seguido de `---` |
+| Aninhada em lista ou citação | `- item` / linha em branco / `  ---` |
+| Recuo de 4 ou mais espaços (código indentado) | `    ---` |
+
+O caso setext é o mais sutil: `---` logo abaixo de um parágrafo é um título de nível 2, mas
+logo abaixo de um item de lista, de um título `#` ou de um comentário é separador.
+
+### `headingDivider`
+
+Lido do front-matter ou de um comentário (`<!-- headingDivider: 2 -->`); aceita um número
+(níveis de 1 até N) ou uma lista (`[1, 3]`). Segue a regra do Marpit:
+
+- Um título do nível configurado abre uma lâmina nova se **já houve conteúdo visível no
+  deck**. Comentários não contam como conteúdo visível.
+- Títulos setext (`===`, `---`) também dividem.
+- Um `---` seguido de título divisor gera uma lâmina vazia entre os dois — o Marp se
+  comporta assim, e o marp-order mostra essa lâmina.
+
+## Remontagem (`Deck::compose`)
+
+Recebe uma lista de índices, que podem faltar (lâmina removida) ou repetir (duplicada).
+
+1. Ordem idêntica à original devolve `source` sem tocar em nada.
+2. Se uma lâmina vem logo depois da mesma vizinha que tinha no arquivo, o par é copiado
+   como estava, com o separador e o espaçamento originais.
+3. Entre lâminas que não eram vizinhas, garante-se uma linha em branco antes do separador.
+   Sem ela, `texto` seguido de `---` viraria título setext e as duas lâminas se fundiriam.
+4. Lâminas `heading_start` não recebem separador: o título já divide.
+5. O final do arquivo (com ou sem quebra de linha) é mantido como no original.
+
+## Miniaturas
+
+`thumbs.rs` executa, na pasta do deck:
+
+```
+marp --no-stdin --allow-local-files --images jpeg --image-scale 0.5 -o <tmp>/s.jpeg deck.md
+```
+
+A k-ésima imagem corresponde à k-ésima lâmina gravada no disco. Se o número de imagens for
+diferente do número de lâminas, o mapeamento é descartado e a interface alerta que a
+divisão pode estar errada — é a rede de segurança contra casos que o parser não cobre.
+
+Uma renderização é disparada ao abrir, ao recarregar e depois de cada salvamento. Se o
+arquivo mudar durante a renderização, o resultado é descartado e ela é refeita.
+
+## API HTTP
+
+| Rota | Função |
+|---|---|
+| `GET /` | Interface |
+| `GET /api/state` | Lâminas (título, texto, avisos) e estado completo |
+| `GET /api/status` | Consulta periódica: edição externa e situação das miniaturas |
+| `GET /thumb/<id>` | Miniatura da lâmina |
+| `POST /api/save` | `{generation, order, force}` — grava a nova ordem |
+| `POST /api/reload` | Relê o arquivo do disco |
+| `POST /api/rethumb` | Refaz as miniaturas |
+
+O servidor recusa requisições cujo cabeçalho `Host` não seja `127.0.0.1` ou `localhost`
+(contra DNS rebinding) e exige o cabeçalho `X-Marp-Order` nos `POST`, o que impede que
+outra página aberta no navegador dispare uma gravação.
+
+## Testes
+
+`cargo test` roda os testes de `deck.rs`. O principal padrão é o de ida e volta: remontar
+o deck em uma ordem, reler o resultado e conferir que as lâminas saíram na ordem pedida.
+
+As regras de divisão foram conferidas contra o marp-cli 4.5.1, comparando o número de
+`<section>` gerado pelo Marp com o número de lâminas do parser em casos-limite. Ao alterar
+o parser, repita essa conferência para o caso novo:
+
+```bash
+marp --no-stdin caso.md -o caso.html && grep -o '<section[^>]*id="[0-9]*"' caso.html | wc -l
+marp-order --no-open --no-thumbs caso.md    # imprime o número de lâminas; Ctrl+C para sair
+```
