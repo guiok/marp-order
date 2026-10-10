@@ -22,7 +22,9 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { position: sticky; top: 0; z-index: 10; background: var(--panel);
+  /* barra e avisos ficam visíveis mesmo com a página rolada */
+  #top { position: sticky; top: 0; z-index: 10; background: var(--bg); }
+  header { background: var(--panel);
            border-bottom: 1px solid var(--line); padding: 8px 16px;
            display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   header h1 { font-size: 15px; margin: 0; max-width: 34ch; overflow: hidden;
@@ -35,7 +37,7 @@
   button:disabled { opacity: .45; cursor: default; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   label.size { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-  .banner { margin: 10px 16px 0; padding: 8px 12px; border-radius: 6px;
+  .banner { margin: 8px 16px; padding: 8px 12px; border-radius: 6px;
             display: flex; align-items: center; gap: 12px; }
   .banner[hidden] { display: none; }
   .banner span { flex: 1; }
@@ -88,6 +90,7 @@
 </style>
 </head>
 <body>
+<div id="top">
 <header>
   <h1 id="file"></h1>
   <span id="info"></span>
@@ -102,17 +105,20 @@
 
 <div id="external" class="banner warn" hidden>
   <span>O arquivo foi alterado fora do marp-order.</span>
-  <button id="reload">Recarregar do disco</button>
+  <button id="reload" title="Recarregar do disco (Ctrl+R)">Recarregar do disco (Ctrl+R)</button>
 </div>
 <div id="mismatch" class="banner danger" hidden><span></span></div>
 <div id="thumbnote" class="banner warn" hidden><span></span><button id="rethumb">Tentar de novo</button></div>
 <div id="offline" class="banner danger" hidden><span>O marp-order foi encerrado. Inicie-o novamente para continuar.</span></div>
+
+</div>
 
 <main id="grid"><div id="bar"></div></main>
 
 <p class="help">
   Arraste para reordenar · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+clique seleciona várias ·
   <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> move a seleção · duplo clique edita ·
+  <kbd>Ctrl</kbd>+<kbd>R</kbd> recarrega o arquivo do disco ·
   <span class="flag">⚠</span> indica lâmina cujo efeito depende da posição (passe o mouse para ver).
 </p>
 
@@ -565,7 +571,7 @@ async function save(force) {
 }
 
 async function reload() {
-  if (isDirty() && !confirm('Recarregar descarta a reorganização ainda não salva. Continuar?')) return;
+  if (isDirty() && !confirm('Recarregar descarta as alterações ainda não salvas. Continuar?')) return;
   const res = await post('/api/reload');
   const body = await res.json();
   if (!res.ok) return toast('Erro ao recarregar: ' + body.error);
@@ -621,6 +627,7 @@ document.addEventListener('keydown', (e) => {
   else if (mod && key === 'd') duplicateSelection();
   else if (mod && key === 'a') { sel = new Set(items.map((it) => it.k)); renderSel(); }
   else if (key === 'delete' || key === 'backspace') removeSelection();
+  else if (mod && key === 'r' && !e.shiftKey) reload();
   else if (key === 'escape') { sel = new Set(); renderSel(); }
   else if (e.altKey && key === 'arrowleft') shiftSelection(-1);
   else if (e.altKey && key === 'arrowright') shiftSelection(1);

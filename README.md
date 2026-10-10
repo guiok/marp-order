@@ -69,6 +69,7 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Editar o conteúdo | duplo clique |
 | Descartar alterações | botão **Descartar** |
 | Salvar no arquivo | `Ctrl+S` |
+| Recarregar o arquivo do disco | `Ctrl+R` |
 
 Cada cartão mostra a posição nova e, se a lâmina mudou de lugar, a posição que ela tem no
 arquivo (`era 8`).
