@@ -19,10 +19,12 @@ use preview::Preview;
 const UI: &str = include_str!("ui.html");
 
 const USAGE: &str = "\
-Usage: marp-order [options] <presentation.md> [-- marp-cli arguments]
+Usage: marp-order [options] [presentation.md ...] [-- marp-cli arguments]
 
 Opens a grid with the slides of a Marp presentation in the browser so you
 can rearrange them by dragging. Saving rewrites the .md file in the new order.
+Each file opens in its own tab; more can be opened from the browser.
+Without files, the ones that were open last time are opened again.
 
 Options:
   --port <n>         local server port (default: chosen by the system)
@@ -36,7 +38,7 @@ Example with a custom theme:
   marp-order talk.md -- --theme-set theme.css";
 
 struct Args {
-    file: PathBuf,
+    files: Vec<PathBuf>,
     port: u16,
     open: bool,
     thumbs: bool,
@@ -44,7 +46,9 @@ struct Args {
     marp_extra: Vec<String>,
 }
 
-pub struct App {
+/// Um arquivo aberto (uma aba da interface).
+pub struct Doc {
+    pub id: u64,
     pub path: PathBuf,
     deck: Deck,
     /// Conteúdo que lemos ou gravamos por último; se o disco diferir, alguém mexeu no arquivo.
@@ -56,13 +60,107 @@ pub struct App {
     pub generation: u64,
     pub save_seq: u64,
     last_backup: Option<PathBuf>,
-    thumb_dir: PathBuf,
+    /// Pasta das miniaturas deste arquivo, uma por lâmina (`<id>.jpeg`).
+    pub thumb_dir: PathBuf,
     pub has_thumb: Vec<bool>,
     pub thumb_version: u64,
     pub thumb_state: &'static str,
     pub thumb_msg: String,
+}
+
+pub struct App {
+    /// Arquivos abertos, na ordem das abas.
+    docs: Vec<Doc>,
+    next_id: u64,
+    tmp: PathBuf,
+    /// Estado inicial das miniaturas de um arquivo recém-aberto.
+    thumb_start: (&'static str, String),
+    /// Fila do gerador de miniaturas; ausente sem marp-cli ou com `--no-thumbs`.
+    render: Option<Sender<u64>>,
     /// Pré-visualização do editor; ausente quando não há marp-cli.
     preview: Option<Preview>,
+}
+
+impl App {
+    pub fn doc(&mut self, id: u64) -> Option<&mut Doc> {
+        self.docs.iter_mut().find(|doc| doc.id == id)
+    }
+
+    /// Abre o arquivo em uma aba nova, ou devolve a aba em que ele já está.
+    fn open(&mut self, file: &Path) -> Result<u64, String> {
+        // Caminho real: gravar por rename não pode trocar um link simbólico por um arquivo.
+        let path = fs::canonicalize(file)
+            .map_err(|e| format!("could not open {}: {e}", file.display()))?;
+        if let Some(doc) = self.docs.iter().find(|doc| doc.path == path) {
+            return Ok(doc.id);
+        }
+        let deck = load(&path)?;
+        let count = deck.slides.len();
+        let id = self.next_id;
+        self.next_id += 1;
+        self.docs.push(Doc {
+            id,
+            last_meta: file_signature(&path),
+            last_disk: deck.source.clone().into_bytes(),
+            deck,
+            disk_order: (0..count).collect(),
+            generation: 1,
+            save_seq: 0,
+            last_backup: None,
+            thumb_dir: self.tmp.join(format!("doc-{id}")),
+            has_thumb: vec![false; count],
+            thumb_version: 0,
+            thumb_state: self.thumb_start.0,
+            thumb_msg: self.thumb_start.1.clone(),
+            path: path.clone(),
+        });
+        self.rethumb(id);
+        remember_recent(&path);
+        self.remember_session();
+        Ok(id)
+    }
+
+    fn close(&mut self, id: u64) {
+        if let Some(at) = self.docs.iter().position(|doc| doc.id == id) {
+            let doc = self.docs.remove(at);
+            let _ = fs::remove_dir_all(doc.thumb_dir);
+            self.remember_session();
+        }
+    }
+
+    /// Guarda quais arquivos estão abertos, para reabri-los na próxima execução sem argumentos.
+    fn remember_session(&self) {
+        let files: Vec<String> = self.docs.iter().map(|doc| doc.path.display().to_string()).collect();
+        write_list("session.json", &files);
+    }
+
+    fn rethumb(&self, id: u64) {
+        if let Some(tx) = &self.render {
+            let _ = tx.send(id);
+        }
+    }
+
+    /// Converte o rascunho para a pré-visualização e devolve a página da lâmina `index`.
+    fn preview(&mut self, id: u64, entries: &[Entry], index: usize) -> Result<usize, String> {
+        let doc = self.doc(id).ok_or("file not open")?;
+        let markdown = doc.deck.compose(entries);
+        let page = match index.min(entries.len()) {
+            0 => 1,
+            index => doc.deck.count(&entries[..index]) + 1,
+        };
+        let path = doc.path.clone();
+        let preview = self
+            .preview
+            .as_mut()
+            .ok_or("preview unavailable: marp-cli not found")?;
+        preview.render(&path, &markdown)?;
+        Ok(page)
+    }
+
+    fn docs_json(&self) -> Value {
+        let docs: Vec<Value> = self.docs.iter().map(Doc::tab_json).collect();
+        json!({ "docs": docs, "recent": recent_files() })
+    }
 }
 
 enum SaveError {
@@ -70,7 +168,7 @@ enum SaveError {
     Other(String),
 }
 
-impl App {
+impl Doc {
     fn external_change(&mut self) -> bool {
         let meta = file_signature(&self.path);
         if meta.is_some() && meta == self.last_meta {
@@ -145,23 +243,9 @@ impl App {
         self.thumb_version += 1;
     }
 
-    /// Converte o rascunho para a pré-visualização e devolve a página da lâmina `index`.
-    fn preview(&mut self, entries: &[Entry], index: usize) -> Result<usize, String> {
-        let markdown = self.deck.compose(entries);
-        let page = match index.min(entries.len()) {
-            0 => 1,
-            index => self.deck.count(&entries[..index]) + 1,
-        };
-        let preview = self
-            .preview
-            .as_mut()
-            .ok_or("preview unavailable: marp-cli not found")?;
-        preview.render(&self.path, &markdown)?;
-        Ok(page)
-    }
-
     fn status_json(&mut self) -> Value {
         json!({
+            "doc": self.id,
             "generation": self.generation,
             "external_change": self.external_change(),
             "disk_order": self.disk_order,
@@ -210,6 +294,94 @@ impl App {
         state["slides"] = json!(slides);
         state
     }
+
+    fn tab_json(&self) -> Value {
+        json!({
+            "doc": self.id,
+            "file": file_name(&self.path),
+            "path": self.path.display().to_string(),
+        })
+    }
+}
+
+fn is_markdown(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown"))
+}
+
+/// Conteúdo de uma pasta para o diálogo "Open": subpastas e arquivos Markdown.
+/// Se `target` for um arquivo, devolve só o caminho dele.
+fn browse(target: &Path) -> Result<Value, String> {
+    let dir = fs::canonicalize(target)
+        .map_err(|e| format!("could not open {}: {e}", target.display()))?;
+    if dir.is_file() {
+        return Ok(json!({ "file": dir.display().to_string() }));
+    }
+    let mut entries: Vec<(bool, String)> = fs::read_dir(&dir)
+        .map_err(|e| format!("could not read {}: {e}", dir.display()))?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let path = entry.path();
+            let is_dir = path.is_dir();
+            (!name.starts_with('.') && (is_dir || is_markdown(&path))).then_some((is_dir, name))
+        })
+        .collect();
+    entries.sort_by_key(|(is_dir, name)| (!is_dir, name.to_lowercase()));
+    let entries: Vec<Value> = entries
+        .into_iter()
+        .map(|(is_dir, name)| json!({ "name": name, "dir": is_dir }))
+        .collect();
+    Ok(json!({
+        "dir": dir.display().to_string(),
+        "parent": dir.parent().map(|p| p.display().to_string()),
+        "entries": entries,
+    }))
+}
+
+const RECENT_MAX: usize = 12;
+
+/// Arquivo de configuração do usuário (`~/.config/marp-order/<name>`).
+fn config_file(name: &str) -> Option<PathBuf> {
+    let base = match std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        Some(dir) => PathBuf::from(dir),
+        None => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
+    };
+    Some(base.join("marp-order").join(name))
+}
+
+/// Lista de caminhos guardada em `name`; só os arquivos que ainda existem.
+fn read_list(name: &str) -> Vec<String> {
+    config_file(name)
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<Vec<String>>(&text).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|file| Path::new(file).is_file())
+        .collect()
+}
+
+fn write_list(name: &str, list: &[String]) {
+    let Some(path) = config_file(name) else { return };
+    if let Some(dir) = path.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    let _ = fs::write(path, json!(list).to_string());
+}
+
+/// Arquivos abertos por último, do mais recente para o mais antigo.
+fn recent_files() -> Vec<String> {
+    read_list("recent.json")
+}
+
+fn remember_recent(file: &Path) {
+    let file = file.display().to_string();
+    let mut list = recent_files();
+    list.retain(|other| *other != file);
+    list.insert(0, file);
+    list.truncate(RECENT_MAX);
+    write_list("recent.json", &list);
 }
 
 fn load(path: &Path) -> Result<Deck, String> {
@@ -263,14 +435,13 @@ fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
-        file: PathBuf::new(),
+        files: Vec::new(),
         port: 0,
         open: true,
         thumbs: true,
         marp_cmd: std::env::var("MARP_ORDER_MARP_CMD").ok(),
         marp_extra: Vec::new(),
     };
-    let mut file = None;
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -297,11 +468,9 @@ fn parse_args() -> Result<Args, String> {
                 args.marp_extra = it.by_ref().collect();
             }
             other if other.starts_with('-') => return Err(format!("unknown option: {other}")),
-            _ if file.is_some() => return Err("give only one file".into()),
-            _ => file = Some(PathBuf::from(arg)),
+            _ => args.files.push(PathBuf::from(arg)),
         }
     }
-    args.file = file.ok_or("give the presentation .md file")?;
     Ok(args)
 }
 
@@ -317,59 +486,58 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args = parse_args()?;
-    // Caminho real: gravar por rename não pode trocar um link simbólico por um arquivo.
-    let path = fs::canonicalize(&args.file)
-        .map_err(|e| format!("could not open {}: {e}", args.file.display()))?;
-    let deck = load(&path)?;
-    let count = deck.slides.len();
-
-    let thumb_dir = std::env::temp_dir().join(format!("marp-order-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("marp-order-{}", std::process::id()));
     // o marp-cli serve às miniaturas e à pré-visualização do editor
     let marp_cmd = thumbs::resolve_cmd(args.marp_cmd.as_deref());
-    let (thumb_state, thumb_msg) = match (&marp_cmd, args.thumbs) {
+    let thumb_start = match (&marp_cmd, args.thumbs) {
         (_, false) => ("off", String::new()),
         (Some(_), true) => ("rendering", String::new()),
         (None, true) => ("error", "marp-cli not found (install `marp` or `npx`)".into()),
     };
-
-    let preview = marp_cmd.as_ref().map(|cmd| {
-        Preview::new(cmd.clone(), args.marp_extra.clone(), thumb_dir.join("preview"))
-    });
+    let preview = marp_cmd
+        .as_ref()
+        .map(|cmd| Preview::new(cmd.clone(), args.marp_extra.clone(), tmp.join("preview")));
 
     let app = Arc::new(Mutex::new(App {
-        last_meta: file_signature(&path),
-        path: path.clone(),
-        last_disk: deck.source.clone().into_bytes(),
-        deck,
-        disk_order: (0..count).collect(),
-        generation: 1,
-        save_seq: 0,
-        last_backup: None,
-        thumb_dir: thumb_dir.clone(),
-        has_thumb: vec![false; count],
-        thumb_version: 0,
-        thumb_state,
-        thumb_msg,
+        docs: Vec::new(),
+        next_id: 1,
+        tmp,
+        thumb_start,
+        render: None,
         preview,
     }));
-
-    let render = marp_cmd.filter(|_| args.thumbs).map(|cmd| {
+    if let Some(cmd) = marp_cmd.filter(|_| args.thumbs) {
         let config = thumbs::Config {
             cmd,
             extra: args.marp_extra,
-            dir: thumb_dir,
         };
         let tx = thumbs::spawn(app.clone(), config);
-        let _ = tx.send(());
-        tx
-    });
+        app.lock().unwrap().render = Some(tx);
+    }
+    {
+        let mut app = app.lock().unwrap();
+        if args.files.is_empty() {
+            // sem argumentos: reabre o que estava aberto da última vez
+            for file in read_list("session.json") {
+                let _ = app.open(Path::new(&file));
+            }
+        }
+        for file in &args.files {
+            app.open(file)?;
+        }
+        for doc in &app.docs {
+            println!("marp-order: {} — {} slides", doc.path.display(), doc.deck.slides.len());
+        }
+        if app.docs.is_empty() {
+            println!("marp-order: no file open — choose one in the browser");
+        }
+    }
 
     let server = Server::http(("127.0.0.1", args.port))
         .map_err(|e| format!("could not start the server: {e}"))?;
     let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(args.port);
     let url = format!("http://127.0.0.1:{port}/");
 
-    println!("marp-order: {} — {count} slides", path.display());
     println!("Open {url}  (Ctrl+C to stop)");
     if args.open {
         let _ = Command::new("xdg-open")
@@ -381,7 +549,7 @@ fn run() -> Result<(), String> {
     }
 
     for request in server.incoming_requests() {
-        handle(request, &app, render.as_ref(), port);
+        handle(request, &app, port);
     }
     Ok(())
 }
@@ -418,9 +586,8 @@ fn parse_entries(value: &Value, slide_count: usize) -> Option<Vec<Entry>> {
         .collect()
 }
 
-/// Arquivo da pasta do deck (ou abaixo dela) pedido pela pré-visualização.
-fn deck_asset(deck: &Path, url_path: &str) -> Option<(Vec<u8>, &'static str)> {
-    let root = deck.parent()?;
+/// Arquivo da pasta `root` do deck (ou abaixo dela) pedido pela pré-visualização.
+fn deck_asset(root: &Path, url_path: &str) -> Option<(Vec<u8>, &'static str)> {
     let file = fs::canonicalize(root.join(percent_decode(url_path))).ok()?;
     if !file.starts_with(root) {
         return None;
@@ -465,7 +632,15 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, port: u16) {
+/// Valor de `name=` na query string.
+fn query<'a>(url: &'a str, name: &str) -> Option<&'a str> {
+    url.split_once('?')?
+        .1
+        .split('&')
+        .find_map(|pair| pair.strip_prefix(name)?.strip_prefix('='))
+}
+
+fn handle(mut request: Request, app: &Mutex<App>, port: u16) {
     // Só o próprio navegador local fala com o servidor: barra DNS rebinding e POSTs de outros sites.
     let host = header_value(&request, "Host").unwrap_or_default();
     if host != format!("127.0.0.1:{port}") && host != format!("localhost:{port}") {
@@ -483,24 +658,38 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
     let route = url.split('?').next().unwrap_or("");
     let mut app = app.lock().unwrap();
 
-    match (is_post, route) {
-        (false, "/") => {
+    if is_post {
+        let mut body = String::new();
+        if request.as_reader().take(16 << 20).read_to_string(&mut body).is_err() {
+            return respond_error(request, 400, "invalid body");
+        }
+        let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+        return handle_post(request, &mut app, route, &parsed);
+    }
+
+    let doc_id = query(&url, "doc").and_then(|id| id.parse::<u64>().ok());
+    match route {
+        "/" => {
             let header = Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap();
             let _ = request.respond(Response::from_string(UI).with_header(header));
         }
-        (false, "/api/state") => {
-            let body = app.state_json();
-            respond_json(request, 200, body);
-        }
-        (false, "/api/status") => {
-            let body = app.status_json();
-            respond_json(request, 200, body);
-        }
-        (false, _) if route.starts_with("/thumb/") => {
-            let id = route["/thumb/".len()..].parse::<usize>().ok();
-            let image = id
-                .filter(|&id| app.has_thumb.get(id) == Some(&true))
-                .and_then(|id| fs::read(app.thumb_dir.join(format!("{id}.jpeg"))).ok());
+        "/api/docs" => respond_json(request, 200, app.docs_json()),
+        "/api/state" | "/api/status" => match doc_id.and_then(|id| app.doc(id)) {
+            Some(doc) if route == "/api/state" => respond_json(request, 200, doc.state_json()),
+            Some(doc) => respond_json(request, 200, doc.status_json()),
+            None => respond_error(request, 404, "file not open"),
+        },
+        _ if route.starts_with("/thumb/") => {
+            // /thumb/<arquivo>/<lâmina>
+            let mut parts = route["/thumb/".len()..].split('/');
+            let doc = parts.next().and_then(|id| id.parse().ok()).and_then(|id| app.doc(id));
+            let slide = parts.next().and_then(|id| id.parse::<usize>().ok());
+            let image = match (doc, slide) {
+                (Some(doc), Some(id)) if doc.has_thumb.get(id) == Some(&true) => {
+                    fs::read(doc.thumb_dir.join(format!("{id}.jpeg"))).ok()
+                }
+                _ => None,
+            };
             match image {
                 Some(bytes) => {
                     let kind = Header::from_bytes("Content-Type", "image/jpeg").unwrap();
@@ -511,11 +700,8 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                 None => respond_error(request, 404, "thumbnail unavailable"),
             }
         }
-        (false, "/preview/slide.html") => {
-            let page = url
-                .split_once("page=")
-                .and_then(|(_, rest)| rest.split('&').next()?.parse().ok())
-                .unwrap_or(1);
+        "/preview/slide.html" => {
+            let page = query(&url, "page").and_then(|p| p.parse().ok()).unwrap_or(1);
             match app.preview.as_ref().and_then(|p| p.page(page)) {
                 Some(html) => {
                     let kind = Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap();
@@ -528,9 +714,14 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                 None => respond_error(request, 404, "preview unavailable"),
             }
         }
-        (false, _) if route.starts_with("/preview/") => {
-            // imagens, fontes e CSS que o deck referencia por caminho relativo
-            match deck_asset(&app.path, &route["/preview/".len()..]) {
+        _ if route.starts_with("/preview/") => {
+            // imagens, fontes e CSS que o deck em pré-visualização referencia por caminho relativo
+            let asset = app
+                .preview
+                .as_ref()
+                .and_then(Preview::root)
+                .and_then(|root| deck_asset(root, &route["/preview/".len()..]));
+            match asset {
                 Some((bytes, kind)) => {
                     let kind = Header::from_bytes("Content-Type", kind).unwrap();
                     let _ = request.respond(Response::from_data(bytes).with_header(kind));
@@ -538,33 +729,65 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                 None => respond_error(request, 404, "file not found"),
             }
         }
-        (true, "/api/save") | (true, "/api/preview") => {
-            let mut body = String::new();
-            if request.as_reader().take(16 << 20).read_to_string(&mut body).is_err() {
-                return respond_error(request, 400, "invalid body");
-            }
-            let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
-            let entries = parse_entries(&parsed["slides"], app.deck.slides.len());
-            let (Some(entries), Some(generation)) = (entries, parsed["generation"].as_u64()) else {
+        _ => respond_error(request, 404, "not found"),
+    }
+}
+
+fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
+    match route {
+        "/api/open" => {
+            let opened = match body["path"].as_str() {
+                Some(path) => app.open(Path::new(path)),
+                None => Err("invalid request".into()),
+            };
+            return match opened {
+                Ok(id) => respond_json(request, 200, app.doc(id).unwrap().tab_json()),
+                Err(message) => respond_error(request, 400, &message),
+            };
+        }
+        "/api/browse" => {
+            let dir = match body["dir"].as_str().filter(|dir| !dir.is_empty()) {
+                Some(dir) => PathBuf::from(dir),
+                None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
+            };
+            return match browse(&dir) {
+                Ok(listing) => respond_json(request, 200, listing),
+                Err(message) => respond_error(request, 400, &message),
+            };
+        }
+        _ => {}
+    }
+
+    // as demais rotas agem sobre um arquivo aberto
+    let Some(id) = body["doc"].as_u64().filter(|&id| app.doc(id).is_some()) else {
+        return respond_error(request, 404, "file not open");
+    };
+    match route {
+        "/api/close" => {
+            app.close(id);
+            respond_json(request, 200, app.docs_json());
+        }
+        "/api/save" | "/api/preview" => {
+            let doc = app.doc(id).unwrap();
+            let entries = parse_entries(&body["slides"], doc.deck.slides.len());
+            let (Some(entries), Some(generation)) = (entries, body["generation"].as_u64()) else {
                 return respond_error(request, 400, "invalid request");
             };
-            if generation != app.generation {
+            if generation != doc.generation {
                 return respond_error(request, 409, "the file was reloaded; refresh the page");
             }
             if route == "/api/preview" {
-                let index = parsed["index"].as_u64().unwrap_or(0) as usize;
-                return match app.preview(&entries, index) {
+                let index = body["index"].as_u64().unwrap_or(0) as usize;
+                return match app.preview(id, &entries, index) {
                     Ok(page) => respond_json(request, 200, json!({ "page": page })),
                     Err(message) => respond_error(request, 503, &message),
                 };
             }
-            match app.save(entries, parsed["force"].as_bool().unwrap_or(false)) {
+            match doc.save(entries, body["force"].as_bool().unwrap_or(false)) {
                 Ok(()) => {
-                    if let Some(tx) = render {
-                        let _ = tx.send(());
-                    }
-                    let body = app.status_json();
-                    respond_json(request, 200, body);
+                    let status = doc.status_json();
+                    app.rethumb(id);
+                    respond_json(request, 200, status);
                 }
                 Err(SaveError::ExternalChange) => {
                     respond_json(request, 409, json!({ "error": "external_change" }))
@@ -572,23 +795,26 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                 Err(SaveError::Other(message)) => respond_error(request, 500, &message),
             }
         }
-        (true, "/api/reload") => match app.reload() {
-            Ok(()) => {
-                if let Some(tx) = render {
-                    let _ = tx.send(());
+        "/api/reload" => {
+            let doc = app.doc(id).unwrap();
+            match doc.reload() {
+                Ok(()) => {
+                    let state = doc.state_json();
+                    app.rethumb(id);
+                    respond_json(request, 200, state);
                 }
-                let body = app.state_json();
-                respond_json(request, 200, body);
+                Err(message) => respond_error(request, 500, &message),
             }
-            Err(message) => respond_error(request, 500, &message),
-        },
-        (true, "/api/rethumb") => {
-            if let Some(tx) = render {
-                app.thumb_state = "rendering";
-                let _ = tx.send(());
+        }
+        "/api/rethumb" => {
+            let rendering = app.render.is_some();
+            let doc = app.doc(id).unwrap();
+            if rendering {
+                doc.thumb_state = "rendering";
             }
-            let body = app.status_json();
-            respond_json(request, 200, body);
+            let status = doc.status_json();
+            app.rethumb(id);
+            respond_json(request, 200, status);
         }
         _ => respond_error(request, 404, "not found"),
     }

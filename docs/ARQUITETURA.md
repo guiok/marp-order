@@ -1,8 +1,8 @@
 # Arquitetura
 
 O marp-order é um binário Rust que sobe um servidor HTTP em `127.0.0.1` e serve uma
-interface de página única. Todo o estado fica no processo; o navegador só envia a ordem
-desejada.
+interface de página única. O conteúdo dos arquivos abertos fica no processo; o navegador
+guarda, por aba, a ordem e as edições ainda não salvas e as envia ao salvar.
 
 ```
 apresentacao.md ──► deck.rs (parse) ──► main.rs (estado + HTTP) ◄──► ui.html (navegador)
@@ -24,6 +24,8 @@ Dependências: `tiny_http` e `serde_json`.
 ## Modelo de dados
 
 ```rust
+App   { docs: Vec<Doc>, preview, .. }   // um Doc por arquivo aberto (aba)
+Doc   { id, path, deck, disk_order, generation, thumb_dir, .. }
 Deck  { source, head, slides }          // head = BOM + front-matter
 Slide { lead, text, heading_start, lead_comment }
 ```
@@ -40,6 +42,17 @@ Salvar só uma reordenação não muda os índices, o que permite desfazer mesmo
 salvar. Salvar com edições é diferente: como o texto novo pode criar ou fundir lâminas, o
 arquivo gravado é relido e vira a nova base (`App::adopt`), com índices renumerados. As
 miniaturas das lâminas intactas são reaproveitadas.
+
+## Vários arquivos
+
+Cada arquivo aberto é um `Doc` com um número (`doc`) que as rotas recebem na query string
+ou no corpo do `POST`. As miniaturas de cada um ficam em uma pasta própria; o gerador
+recebe por um canal o número do arquivo a renderizar. A pré-visualização do editor é uma
+só (o marp-cli em modo `--watch` usa uma porta fixa) e é reiniciada quando o arquivo em
+edição está em outra pasta.
+
+`~/.config/marp-order/recent.json` guarda os últimos arquivos abertos e `session.json`,
+os que estão abertos agora; sem argumentos, o programa reabre os da sessão.
 
 ## Divisão das lâminas
 
@@ -139,15 +152,19 @@ O marp-cli em modo `--watch` abre um servidor websocket próprio na porta 37717.
 | Rota | Função |
 |---|---|
 | `GET /` | Interface |
-| `GET /api/state` | Lâminas (título, texto, avisos) e estado completo |
-| `GET /api/status` | Consulta periódica: edição externa e situação das miniaturas |
-| `GET /thumb/<id>` | Miniatura da lâmina |
+| `GET /api/docs` | Arquivos abertos e lista de recentes |
+| `GET /api/state?doc=N` | Lâminas (título, texto, avisos) e estado completo do arquivo |
+| `GET /api/status?doc=N` | Consulta periódica: edição externa e situação das miniaturas |
+| `GET /thumb/<doc>/<id>` | Miniatura da lâmina |
 | `GET /preview/slide.html?page=N` | Lâmina N do rascunho em edição |
 | `GET /preview/<caminho>` | Imagens e fontes da pasta do deck |
-| `POST /api/save` | `{generation, slides: [{id, text?}], force}` — grava ordem e edições |
-| `POST /api/preview` | `{generation, slides, index}` — converte o rascunho; devolve a página |
-| `POST /api/reload` | Relê o arquivo do disco |
-| `POST /api/rethumb` | Refaz as miniaturas |
+| `POST /api/open` | `{path}` — abre um arquivo em uma aba |
+| `POST /api/close` | `{doc}` — fecha a aba |
+| `POST /api/browse` | `{dir}` — pastas e arquivos Markdown, para o diálogo de abrir |
+| `POST /api/save` | `{doc, generation, slides: [{id, text?}], force}` — grava ordem e edições |
+| `POST /api/preview` | `{doc, generation, slides, index}` — converte o rascunho; devolve a página |
+| `POST /api/reload` | `{doc}` — relê o arquivo do disco |
+| `POST /api/rethumb` | `{doc}` — refaz as miniaturas |
 
 O servidor recusa requisições cujo cabeçalho `Host` não seja `127.0.0.1` ou `localhost`
 (contra DNS rebinding) e exige o cabeçalho `X-Marp-Order` nos `POST`, o que impede que

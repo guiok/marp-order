@@ -17,6 +17,7 @@ without touching the content of the slides.
 - **Real thumbnails**, rendered by marp-cli with your presentation's theme.
 - **Editor with live preview**: double-click opens the slide's Markdown and the result
   is redrawn as you type.
+- **Several files in tabs**, with a list of recent files and the last session restored.
 - **No reformatting**: unedited slides are moved byte for byte; the front matter stays
   where it is.
 - **Safe**: automatic backup, atomic writes and detection of external edits.
@@ -55,7 +56,9 @@ downloads the package on first run.
 ## Usage
 
 ```bash
-marp-order presentation.md
+marp-order presentation.md            # one file
+marp-order talk.md workshop.md        # each file in its own tab
+marp-order                            # the files that were open last time
 ```
 
 The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the program with
@@ -72,6 +75,7 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Discard changes | **Discard** button |
 | Save to the file | `Ctrl+S` |
 | Reload the file from disk | `Ctrl+R` |
+| Open another file | `Ctrl+O` or **+ Open** |
 
 Each card shows its new position and, if the slide has moved, the position it has in the
 file (`was 8`).
@@ -93,10 +97,21 @@ undone with `Ctrl+Z`. The card gets an **edited** tag, and its thumbnail is
 refreshed when you save. Writing `---` inside a slide splits it in two; the new slides
 show up in the grid after saving.
 
+### Several files
+
+Each file lives in a tab. **+ Open** (`Ctrl+O`) shows the recently opened files and a
+folder browser limited to `.md` and `.markdown` files; **×** closes a tab. Unsaved
+changes, the undo history and the selection are kept per tab while you switch, and a
+dot on the tab marks unsaved changes.
+
+The list of open files is remembered: running `marp-order` with no file reopens the tabs
+of the last session. Recent files and the session are stored in
+`~/.config/marp-order/` (or `$XDG_CONFIG_HOME/marp-order/`).
+
 ### Options
 
 ```
-marp-order [options] <presentation.md> [-- marp-cli arguments]
+marp-order [options] [presentation.md ...] [-- marp-cli arguments]
 
   --port <n>         local server port (default: chosen by the system)
   --no-open          do not open the browser automatically
@@ -168,11 +183,9 @@ marks the card with ⚠ so you can check.
 ```bash
 make test     # parser and writer tests
 make build    # release binary in target/release/
+make                          # run it, reopening the last session
 make abrir DECK=presentation.md
 ```
-
-To avoid repeating `DECK`, create a `local.mk` (ignored by git) containing
-`DECK := presentation.md`.
 
 The code structure and the slide-splitting rules are described in
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md) (in Portuguese). Contributions are welcome:

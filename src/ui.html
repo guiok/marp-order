@@ -27,8 +27,17 @@
   header { background: var(--panel);
            border-bottom: 1px solid var(--line); padding: 8px 16px;
            display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  header h1 { font-size: 15px; margin: 0; max-width: 34ch; overflow: hidden;
-              text-overflow: ellipsis; white-space: nowrap; }
+  #tabs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px; padding: 6px 16px 0; }
+  .tab { display: flex; align-items: center; gap: 4px; padding: 5px 6px 5px 12px; max-width: 34ch;
+         border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0;
+         color: var(--muted); cursor: pointer; }
+  .tab.on { background: var(--panel); color: var(--text); font-weight: 600; }
+  .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tab.dirty .name::after { content: ' •'; color: var(--warn); }
+  .tab .x, #open { border: 0; background: none; padding: 1px 6px; color: inherit; }
+  #open { margin-bottom: 4px; color: var(--accent); }
+  .nodoc header, .nodoc #grid, .nodoc .help { display: none; }
+  #empty { padding: 48px 16px; text-align: center; color: var(--muted); }
   #info { color: var(--muted); margin-right: auto; }
   #info .dirty { color: var(--warn); font-weight: 600; }
   button { font: inherit; color: var(--text); background: var(--panel);
@@ -86,13 +95,24 @@
   #edview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
   #edview iframe.loading { opacity: 0; }
   .help { color: var(--muted); padding: 0 16px 20px; font-size: 12px; }
-  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--panel); }
+  #opener { width: min(900px, 96vw); }
+  #opener .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 50vh; padding-bottom: 12px; }
+  #opener h2 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); }
+  #opener ul { list-style: none; margin: 0; padding: 0; max-height: 56vh; overflow: auto; }
+  #opener li button { width: 100%; text-align: left; border: 0; border-radius: 4px; padding: 4px 8px;
+                      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #opener li button:hover { background: var(--accent-soft); }
+  #opener li small { display: block; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  #opform { display: flex; gap: 6px; margin-bottom: 6px; }
+  #oppath { flex: 1; font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
+            background: var(--bg); color: var(--text); }
+  #operror { color: var(--danger); margin: 6px 0 0; }
 </style>
 </head>
 <body>
 <div id="top">
+<nav id="tabs"><button id="open" title="Open a file (Ctrl+O)">+ Open</button></nav>
 <header>
-  <h1 id="file"></h1>
   <span id="info"></span>
   <label class="size">Size <input id="size" type="range" min="140" max="520" step="20" value="260"></label>
   <button id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
@@ -113,12 +133,13 @@
 
 </div>
 
+<p id="empty" hidden>No file open. <button id="openempty">Open a presentation…</button></p>
 <main id="grid"><div id="bar"></div></main>
 
 <p class="help">
   Drag to reorder · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click selects several ·
   <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> moves the selection · double-click edits ·
-  <kbd>Ctrl</kbd>+<kbd>R</kbd> reloads the file from disk ·
+  <kbd>Ctrl</kbd>+<kbd>R</kbd> reloads the file from disk · <kbd>Ctrl</kbd>+<kbd>O</kbd> opens another file ·
   <span class="flag">⚠</span> marks a slide whose effect depends on its position (hover to see why).
 </p>
 
@@ -134,6 +155,25 @@
     <button id="edapply" class="primary">Apply</button>
   </div>
 </dialog>
+<dialog id="opener">
+  <div class="bar"><strong>Open a presentation</strong><span class="grow"></span><button id="opclose">Close</button></div>
+  <div class="panes">
+    <section>
+      <h2>Recent</h2>
+      <ul id="oprecent"></ul>
+    </section>
+    <section>
+      <h2>Browse</h2>
+      <form id="opform">
+        <input id="oppath" spellcheck="false" aria-label="Folder or file path">
+        <button>Go</button>
+      </form>
+      <ul id="oplist"></ul>
+      <p id="operror"></p>
+    </section>
+  </div>
+</dialog>
+
 <div id="toast"></div>
 
 <script>
@@ -141,6 +181,8 @@
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid'), bar = $('#bar');
 
+let tabs = [];           // arquivos abertos: [{doc, file, path}] + estado guardado ao trocar de aba
+let cur = null;          // aba ativa; as variáveis abaixo são o estado dela
 let S = null;            // estado vindo do servidor
 let items = [];          // ordem atual: [{k: chave do cartão, id: lâmina, text: se editada}]
 let sel = new Set();     // chaves selecionadas
@@ -164,9 +206,13 @@ function toast(message) {
   toast.timer = setTimeout(() => el.classList.remove('show'), 4000);
 }
 
-const ids = () => items.map((it) => it.id);
 const sameOrder = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
-const isDirty = () => !sameOrder(ids(), S.disk_order) || items.some((it) => it.text != null);
+const dirtyOf = (state, list) => !!state &&
+  (!sameOrder(list.map((it) => it.id), state.disk_order) || list.some((it) => it.text != null));
+const isDirty = () => dirtyOf(S, items);
+const tabDirty = (tab) => (tab === cur ? isDirty() : dirtyOf(tab.S, tab.items || []));
+/** Quantas lâminas do arquivo não estão mais na lista. */
+const removedCount = () => S.disk_order.filter((id) => !items.some((it) => it.id === id && !it.fresh)).length;
 const textOf = (item) => item.text ?? S.slides[item.id].text;
 const entry = (item) => (item.text == null ? { id: item.id } : { id: item.id, text: item.text });
 
@@ -192,9 +238,10 @@ function adopt(state) {
   sel = new Set(); anchor = null; undo = []; redo = [];
   cards.forEach((el) => el.remove());
   cards.clear();
-  $('#file').textContent = S.file;
-  $('#file').title = S.path;
+  cur.file = S.file;
+  cur.path = S.path;
   document.title = S.file + ' — marp-order';
+  document.body.classList.remove('nodoc');
   render();
   showStatus(S);
 }
@@ -208,7 +255,7 @@ function commit(next) {
 }
 
 function thumbSrc(id) {
-  return `/thumb/${id}?g=${S.generation}&v=${S.thumbs.version}`;
+  return `/thumb/${cur.doc}/${id}?g=${S.generation}&v=${S.thumbs.version}`;
 }
 
 function makeCard(item) {
@@ -247,13 +294,13 @@ function paint(el, item) {
   el.classList.toggle('changed', item.text != null);
 
   const face = el.querySelector('.face');
-  const src = S.thumbs.have[item.id] ? thumbSrc(item.id) : '';
+  const src = !item.fresh && S.thumbs.have[item.id] ? thumbSrc(item.id) : '';
   const key = src + '\n' + (item.text ?? '');
   if (face.dataset.key === key) return;
   face.dataset.key = key;
   const badge = document.createElement('span');
   badge.className = 'edited';
-  badge.textContent = 'edited';
+  badge.textContent = item.fresh ? 'added' : 'edited';
   badge.title = 'The thumbnail is refreshed when you save.';
   let content;
   if (src) {
@@ -277,7 +324,7 @@ function render() {
     if (!el) { el = makeCard(item); cards.set(item.k, el); }
     paint(el, item);
     el.querySelector('.num').textContent = i + 1;
-    const origin = S.disk_order.indexOf(item.id);
+    const origin = item.fresh ? -1 : S.disk_order.indexOf(item.id);
     const was = el.querySelector('.was');
     was.textContent = origin < 0 ? 'new' : origin !== i ? `was ${origin + 1}` : '';
     if (grid.children[i + 1] !== el) grid.insertBefore(el, grid.children[i + 1] || null);
@@ -288,7 +335,7 @@ function render() {
 function renderSel() {
   for (const [k, el] of cards) el.classList.toggle('sel', sel.has(k));
   const dirty = isDirty();
-  const removed = S.disk_order.filter((id) => !items.some((it) => it.id === id)).length;
+  const removed = removedCount();
   const info = $('#info');
   info.textContent = `${items.length} slide${items.length === 1 ? '' : 's'}` + (sel.size > 1 ? ` · ${sel.size} selected` : '');
   if (dirty) {
@@ -302,6 +349,7 @@ function renderSel() {
   $('#undo').disabled = !undo.length;
   $('#redo').disabled = !redo.length;
   $('#dup').disabled = $('#del').disabled = !sel.size;
+  renderTabs();
 }
 
 function showStatus(status) {
@@ -472,7 +520,7 @@ async function refreshPreview() {
   try {
     const slides = items.map((it) => (it.k === session.k ? { id: it.id, text: edtext.value } : entry(it)));
     const index = items.findIndex((it) => it.k === session.k);
-    const res = await post('/api/preview', { generation: S.generation, slides, index });
+    const res = await post('/api/preview', { doc: cur.doc, generation: S.generation, slides, index });
     const body = await res.json();
     if (editing === session) {
       if (res.ok) { showPreview(`/preview/slide.html?page=${body.page}&t=${Date.now()}`); edStatus(''); }
@@ -509,7 +557,7 @@ function applyEdit() {
   closeEditor();
   commit(items.map((it) => {
     if (it.k !== k || text === textOf(it)) return it;
-    return text === S.slides[it.id].text ? { k: it.k, id: it.id } : { ...it, text };
+    return text === S.slides[it.id].text && !it.fresh ? { k: it.k, id: it.id } : { ...it, text };
   }));
 }
 
@@ -541,16 +589,17 @@ $('#edcancel').onclick = cancelEdit;
 
 async function save(force) {
   if (!isDirty()) return;
-  const order = ids();
-  const removed = S.disk_order.filter((id) => !order.includes(id)).length;
+  const tab = cur;
+  const removed = removedCount();
   if (removed && !force && !confirm(`${removed} slide(s) will be removed from the file. Continue?`)) return;
   let res;
   try {
-    res = await post('/api/save', { generation: S.generation, slides: items.map(entry), force: !!force });
+    res = await post('/api/save', { doc: tab.doc, generation: S.generation, slides: items.map(entry), force: !!force });
   } catch {
     return toast('Could not reach marp-order.');
   }
   const body = await res.json();
+  if (cur !== tab) return;   // trocou de aba: o poll acerta o estado ao voltar
   if (res.status === 409 && body.error === 'external_change') {
     if (confirm('The file was changed outside marp-order since it was opened.\n\n' +
         'OK: overwrite it with your changes (a copy of the current file is kept).\n' +
@@ -560,7 +609,7 @@ async function save(force) {
   if (!res.ok) return toast('Could not save: ' + body.error);
   if (body.generation !== S.generation) {
     // houve edição de conteúdo: o servidor releu o arquivo e renumerou as lâminas
-    adopt(await (await fetch('/api/state')).json());
+    await refetch(tab);
   } else {
     S.disk_order = body.disk_order;
     S.thumbs = body.thumbs;
@@ -572,29 +621,175 @@ async function save(force) {
 
 async function reload() {
   if (isDirty() && !confirm('Reloading discards your unsaved changes. Continue?')) return;
-  const res = await post('/api/reload');
+  const tab = cur;
+  const res = await post('/api/reload', { doc: tab.doc });
   const body = await res.json();
+  if (cur !== tab) return;
   if (!res.ok) return toast('Could not reload: ' + body.error);
   adopt(body);
   toast('File reloaded from disk.');
 }
 
+async function refetch(tab) {
+  const res = await fetch(`/api/state?doc=${tab.doc}`);
+  if (!res.ok) return dropTab(tab);
+  const state = await res.json();
+  if (cur === tab) adopt(state);
+}
+
 async function poll() {
-  let status;
+  const tab = cur;
+  let res, status;
   try {
-    status = await (await fetch('/api/status')).json();
+    res = await fetch(tab ? `/api/status?doc=${tab.doc}` : '/api/docs');
+    status = await res.json();
   } catch {
     offline = true;
     $('#offline').hidden = false;
     return;
   }
   if (offline) { offline = false; $('#offline').hidden = true; }
-  if (status.generation !== S.generation) return adopt(await (await fetch('/api/state')).json());
+  if (!tab || cur !== tab) return;
+  if (res.status === 404) return dropTab(tab);   // fechado em outra janela
+  if (!S) return;
+  if (status.generation !== S.generation) return refetch(tab);
   const fresh = status.thumbs.version !== S.thumbs.version;
+  const moved = !sameOrder(status.disk_order, S.disk_order);
   S.thumbs = status.thumbs;
-  if (fresh) for (const item of items) paint(cards.get(item.k), item);
+  S.external_change = status.external_change;
+  if (moved) { S.disk_order = status.disk_order; render(); }
+  else if (fresh) for (const item of items) paint(cards.get(item.k), item);
   showStatus(status);
 }
+
+// ---- abas ------------------------------------------------------------------
+
+function renderTabs() {
+  const nav = $('#tabs');
+  nav.querySelectorAll('.tab').forEach((el) => el.remove());
+  for (const tab of tabs) {
+    const el = document.createElement('div');
+    el.className = 'tab' + (tab === cur ? ' on' : '') + (tabDirty(tab) ? ' dirty' : '');
+    el.title = tab.path;
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = tab.file;
+    const x = document.createElement('button');
+    x.className = 'x';
+    x.textContent = '×';
+    x.title = 'Close this file';
+    x.onclick = (e) => { e.stopPropagation(); closeTab(tab); };
+    el.onclick = () => { if (tab !== cur) activate(tab); };
+    el.append(name, x);
+    nav.insertBefore(el, $('#open'));
+  }
+  $('#empty').hidden = tabs.length > 0;
+}
+
+/** Troca de aba, guardando na anterior a ordem, as edições e o histórico não salvos. */
+async function activate(tab) {
+  if (cur) Object.assign(cur, { S, items, sel, anchor, undo, redo });
+  cur = tab;
+  cards.forEach((el) => el.remove());
+  cards.clear();
+  if (tab && tab.S) {
+    ({ S, items, sel, anchor, undo, redo } = tab);
+    document.title = S.file + ' — marp-order';
+    document.body.classList.remove('nodoc');
+    render();
+    showStatus(S);
+    return poll();
+  }
+  S = null; items = []; sel = new Set(); anchor = null; undo = []; redo = [];
+  document.title = 'marp-order';
+  document.body.classList.add('nodoc');
+  renderTabs();
+  if (tab) await refetch(tab);
+}
+
+function dropTab(tab) {
+  const at = tabs.indexOf(tab);
+  if (at < 0) return;
+  tabs.splice(at, 1);
+  if (cur !== tab) return renderTabs();
+  cur = null;
+  activate(tabs[at] || tabs[at - 1] || null);
+}
+
+async function closeTab(tab) {
+  if (tabDirty(tab) && !confirm(`${tab.file} has unsaved changes. Close it anyway?`)) return;
+  try { await post('/api/close', { doc: tab.doc }); } catch {}
+  dropTab(tab);
+}
+
+// ---- abrir arquivo -----------------------------------------------------------
+
+const openDlg = $('#opener');
+
+function fileButton(label, hint, action) {
+  const li = document.createElement('li');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  if (hint) {
+    const small = document.createElement('small');
+    small.textContent = hint;
+    button.append(small);
+    button.title = hint;
+  }
+  button.onclick = action;
+  li.append(button);
+  return li;
+}
+
+async function openDialog() {
+  $('#operror').textContent = '';
+  openDlg.showModal();
+  const info = await (await fetch('/api/docs')).json();
+  const recent = info.recent.map((path) => {
+    const cut = path.lastIndexOf('/');
+    return fileButton(path.slice(cut + 1), path.slice(0, cut) || '/', () => openFile(path));
+  });
+  if (!recent.length) {
+    const none = document.createElement('li');
+    none.textContent = 'Nothing yet.';
+    recent.push(none);
+  }
+  $('#oprecent').replaceChildren(...recent);
+  browse(cur ? cur.path.replace(/\/[^/]*$/, '') || '/' : '');
+}
+
+async function browse(dir) {
+  const res = await post('/api/browse', { dir });
+  const body = await res.json();
+  if (!res.ok) return void ($('#operror').textContent = body.error);
+  if (body.file) return openFile(body.file);
+  $('#operror').textContent = '';
+  $('#oppath').value = body.dir;
+  const base = body.dir.endsWith('/') ? body.dir : body.dir + '/';
+  const list = body.entries.map((entry) => (entry.dir
+    ? fileButton('📁 ' + entry.name, '', () => browse(base + entry.name))
+    : fileButton(entry.name, '', () => openFile(base + entry.name))));
+  if (body.parent) list.unshift(fileButton('📁 ..', '', () => browse(body.parent)));
+  $('#oplist').replaceChildren(...list);
+}
+
+async function openFile(path) {
+  const res = await post('/api/open', { path });
+  const body = await res.json();
+  if (!res.ok) {
+    if (openDlg.open) $('#operror').textContent = body.error; else toast(body.error);
+    return;
+  }
+  let tab = tabs.find((t) => t.doc === body.doc);
+  if (!tab) { tab = body; tabs.push(tab); }
+  if (openDlg.open) openDlg.close();
+  if (tab !== cur) activate(tab); else renderTabs();
+}
+
+$('#opform').onsubmit = (e) => { e.preventDefault(); browse($('#oppath').value.trim()); };
+$('#opclose').onclick = () => openDlg.close();
+$('#open').onclick = $('#openempty').onclick = openDialog;
 
 // ---- controles ---------------------------------------------------------------
 
@@ -605,7 +800,7 @@ $('#dup').onclick = duplicateSelection;
 $('#del').onclick = removeSelection;
 $('#discard').onclick = () => commit(S.disk_order.map((id) => ({ k: nextKey++, id })));
 $('#reload').onclick = reload;
-$('#rethumb').onclick = () => post('/api/rethumb').then(poll);
+$('#rethumb').onclick = () => post('/api/rethumb', { doc: cur.doc }).then(poll);
 
 const size = $('#size');
 const applySize = () => document.documentElement.style.setProperty('--w', size.value + 'px');
@@ -617,9 +812,11 @@ size.oninput = () => {
 };
 
 document.addEventListener('keydown', (e) => {
-  if (!S || editor.open) return;
+  if (editor.open || openDlg.open) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
+  if (mod && key === 'o') { e.preventDefault(); return openDialog(); }
+  if (!S) return;
   let handled = true;
   if (mod && key === 's') save(false);
   else if (mod && key === 'z' && !e.shiftKey) stepHistory(undo, redo);
@@ -643,11 +840,13 @@ document.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('beforeunload', (e) => {
-  if (S && !offline && isDirty()) { e.preventDefault(); e.returnValue = ''; }
+  if (!offline && tabs.some(tabDirty)) { e.preventDefault(); e.returnValue = ''; }
 });
 
-fetch('/api/state').then((r) => r.json()).then((state) => {
-  adopt(state);
+fetch('/api/docs').then((r) => r.json()).then((info) => {
+  tabs = info.docs;
+  activate(tabs[0] || null);
+  if (!tabs.length) openDialog();
   setInterval(poll, 1500);
 });
 </script>

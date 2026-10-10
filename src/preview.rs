@@ -20,6 +20,8 @@ pub struct Preview {
     extra: Vec<String>,
     dir: PathBuf,
     watcher: Option<Child>,
+    /// Pasta do deck em pré-visualização; o marp-cli roda nela.
+    root: Option<PathBuf>,
     nonce: u64,
 }
 
@@ -30,7 +32,20 @@ impl Preview {
             extra,
             dir,
             watcher: None,
+            root: None,
             nonce: 0,
+        }
+    }
+
+    /// Pasta de onde saem as imagens e fontes do rascunho atual.
+    pub fn root(&self) -> Option<&Path> {
+        self.root.as_deref()
+    }
+
+    fn stop(&mut self) {
+        if let Some(mut child) = self.watcher.take() {
+            drop(child.stdin.take());
+            let _ = child.wait();
         }
     }
 
@@ -43,6 +58,12 @@ impl Preview {
         fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
         let draft = self.dir.join("draft.md");
         let html = self.html_path();
+        let root = deck.parent().unwrap_or(Path::new(".")).to_path_buf();
+        if self.root.as_ref() != Some(&root) {
+            // outro arquivo: caminhos relativos do tema e das imagens mudam de base
+            self.stop();
+            self.root = Some(root.clone());
+        }
 
         // O marp-cli pode gravar um HTML de uma versão anterior logo depois da nossa
         // escrita; a marca abaixo, que sai no CSS da página, identifica a versão certa.
@@ -64,7 +85,7 @@ impl Preview {
                 .arg(&html)
                 .args(&self.extra)
                 .arg(&draft)
-                .current_dir(deck.parent().unwrap_or(Path::new(".")))
+                .current_dir(&root)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -122,9 +143,6 @@ impl Preview {
 
 impl Drop for Preview {
     fn drop(&mut self) {
-        if let Some(mut child) = self.watcher.take() {
-            drop(child.stdin.take());
-            let _ = child.wait();
-        }
+        self.stop();
     }
 }

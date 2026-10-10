@@ -1,15 +1,12 @@
-# Para não digitar DECK toda vez, crie um local.mk (fora do git) com `DECK := sua.md`.
--include local.mk
-
+# Sem DECK, o marp-order reabre os arquivos da última sessão.
 DECK ?=
 BIN  := target/release/marp-order
 SRC  := Cargo.toml $(wildcard src/*)
 
 .PHONY: abrir build test install help
 
-abrir: $(BIN) ## abre a apresentação na matriz de lâminas (DECK=apresentacao.md)
-	@test -n "$(DECK)" || { echo "uso: make abrir DECK=apresentacao.md"; exit 1; }
-	$(BIN) "$(DECK)"
+abrir: $(BIN) ## abre os arquivos da última sessão (ou DECK=apresentacao.md)
+	$(BIN) $(if $(DECK),"$(DECK)")
 
 build: $(BIN) ## compila o binário de release
 

@@ -14,8 +14,6 @@ pub struct Config {
     pub cmd: Vec<String>,
     /// Argumentos extras do usuário (ex.: `--theme-set tema.css`).
     pub extra: Vec<String>,
-    /// Pasta onde ficam as miniaturas, uma por lâmina (`<id>.jpeg`).
-    pub dir: PathBuf,
 }
 
 /// Escolhe o marp-cli: o comando informado, `marp` no PATH ou, por último, `npx`.
@@ -43,29 +41,49 @@ fn in_path(program: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Inicia o gerador. Cada mensagem enviada pede uma nova renderização do arquivo em disco.
-pub fn spawn(app: Arc<Mutex<App>>, config: Config) -> Sender<()> {
+/// Inicia o gerador. Cada mensagem traz o número de um arquivo aberto e pede uma nova
+/// renderização do que está em disco.
+pub fn spawn(app: Arc<Mutex<App>>, config: Config) -> Sender<u64> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || worker(app, config, rx));
     tx
 }
 
-fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<()>) {
-    while rx.recv().is_ok() {
-        while rx.try_recv().is_ok() {} // pedidos acumulados viram um só
+fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<u64>) {
+    let mut pending: Vec<u64> = Vec::new();
+    loop {
+        if pending.is_empty() {
+            match rx.recv() {
+                Ok(id) => pending.push(id),
+                Err(_) => return,
+            }
+        }
+        // pedidos acumulados para o mesmo arquivo viram um só
+        for id in rx.try_iter() {
+            if !pending.contains(&id) {
+                pending.push(id);
+            }
+        }
+        let id = pending.remove(0);
         loop {
-            let (generation, save_seq, order, path) = {
+            let job = {
                 let mut app = app.lock().unwrap();
-                app.thumb_state = "rendering";
-                app.thumb_msg.clear();
-                (
-                    app.generation,
-                    app.save_seq,
-                    app.disk_order.clone(),
-                    app.path.clone(),
-                )
+                app.doc(id).map(|doc| {
+                    doc.thumb_state = "rendering";
+                    doc.thumb_msg.clear();
+                    (
+                        doc.generation,
+                        doc.save_seq,
+                        doc.disk_order.clone(),
+                        doc.path.clone(),
+                        doc.thumb_dir.clone(),
+                    )
+                })
             };
-            let work = config.dir.join("render");
+            let Some((generation, save_seq, order, path, dir)) = job else {
+                break; // o arquivo foi fechado
+            };
+            let work = dir.join("render");
             let result = if order.is_empty() {
                 Ok(Vec::new())
             } else {
@@ -73,13 +91,16 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<()>) {
             };
 
             let mut app = app.lock().unwrap();
+            let Some(app) = app.doc(id) else {
+                break;
+            };
             if app.generation != generation || app.save_seq != save_seq {
                 continue; // o arquivo mudou durante a renderização
             }
             match result {
                 Ok(images) if images.len() == order.len() => {
                     for (image, &id) in images.iter().zip(&order) {
-                        let target = config.dir.join(format!("{id}.jpeg"));
+                        let target = dir.join(format!("{id}.jpeg"));
                         if fs::rename(image, &target).is_ok() {
                             app.has_thumb[id] = true;
                         }
