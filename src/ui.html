@@ -107,6 +107,29 @@
   #oppath { flex: 1; font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
             background: var(--bg); color: var(--text); }
   #operror { color: var(--danger); margin: 6px 0 0; }
+  #differ { width: min(1100px, 96vw); }
+  #differ select { font: inherit; max-width: 30ch; }
+  #dfrows { display: grid; gap: 8px; max-height: 74vh; overflow: auto; padding: 10px 14px;
+            border-top: 1px solid var(--line); }
+  .dfrow { display: grid; grid-template-columns: 1fr 140px 1fr; gap: 10px; align-items: center;
+           padding: 6px; border-radius: 8px; }
+  .dfrow.same { opacity: .55; }
+  .dfrow.changed { background: var(--warn-soft); }
+  .dfrow.left { background: var(--danger-soft); }
+  .dfrow.right { background: var(--accent-soft); }
+  .dfrow .mid { display: grid; gap: 4px; justify-items: center; font-size: 12px; color: var(--muted); }
+  .mini { width: 100%; max-width: 230px; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 6px; overflow: hidden; }
+  .mini:first-child { justify-self: end; }
+  .mini img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #fff; }
+  .mini .text { aspect-ratio: 16 / 9; padding: 8px 10px; overflow: hidden; white-space: pre-wrap;
+                font: 10px/1.35 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+  .mini footer { display: flex; gap: 6px; padding: 4px 8px; border-top: 1px solid var(--line); font-size: 12px; }
+  .dfrow details { grid-column: 1 / -1; font-size: 12px; }
+  .dftext { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+  .dftext pre { margin: 0; padding: 8px; border-radius: 4px; background: var(--panel); white-space: pre-wrap;
+                font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+  kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--panel); }
 </style>
 </head>
 <body>
@@ -119,6 +142,7 @@
   <button id="redo" title="Redo (Ctrl+Y)">↷ Redo</button>
   <button id="dup" title="Duplicate selected (Ctrl+D)">Duplicate</button>
   <button id="del" title="Remove selected (Delete)">Remove</button>
+  <button id="compare" title="Compare with another open file and merge slides">Compare…</button>
   <button id="discard" title="Go back to what is saved in the file">Discard</button>
   <button id="save" class="primary" title="Write the changes to the file (Ctrl+S)">Save</button>
 </header>
@@ -174,6 +198,17 @@
   </div>
 </dialog>
 
+<dialog id="differ">
+  <div class="bar">
+    <strong>Compare</strong> <span id="dfleft"></span> with <select id="dfother" aria-label="Other file"></select>
+    <span id="dfsummary" class="grow"></span>
+    <label><input type="checkbox" id="dfonly"> only differences</label>
+    <button id="dfundo">↶ Undo</button>
+    <button id="dfall" title="Make this file's slides match the other file">Take all from other</button>
+    <button id="dfclose" class="primary">Done</button>
+  </div>
+  <div id="dfrows"></div>
+</dialog>
 <div id="toast"></div>
 
 <script>
@@ -684,6 +719,7 @@ function renderTabs() {
     nav.insertBefore(el, $('#open'));
   }
   $('#empty').hidden = tabs.length > 0;
+  $('#compare').disabled = !S || tabs.length < 2;
 }
 
 /** Troca de aba, guardando na anterior a ordem, as edições e o histórico não salvos. */
@@ -791,6 +827,191 @@ $('#opform').onsubmit = (e) => { e.preventDefault(); browse($('#oppath').value.t
 $('#opclose').onclick = () => openDlg.close();
 $('#open').onclick = $('#openempty').onclick = openDialog;
 
+// ---- comparar e mesclar ------------------------------------------------------
+
+const differ = $('#differ');
+let other = null;        // estado (salvo em disco) do arquivo comparado
+
+const norm = (text) => text.replace(/\r\n/g, '\n').trim();
+
+/**
+ * Alinha as lâminas desta aba (`left`) com as do outro arquivo (`right`) pela maior
+ * subsequência comum. Devolve linhas `same`, `changed` (mesmo título, texto diferente),
+ * `left` (só aqui) e `right` (só no outro; `at` é onde ela entraria nesta aba).
+ */
+function diffRows(left, right) {
+  const a = left.map((it) => norm(textOf(it))), b = right.map((slide) => norm(slide.text));
+  const n = a.length, m = b.length;
+  const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const rows = [];
+  let onlyL = [], onlyR = [], i = 0, j = 0;
+  const flush = () => {
+    let next = 0;
+    for (const l of onlyL) {
+      const title = titleOf(left[l]);
+      const hit = title ? onlyR.findIndex((r, q) => q >= next && right[r].title === title) : -1;
+      if (hit < 0) { rows.push({ kind: 'left', l }); continue; }
+      for (; next < hit; next++) rows.push({ kind: 'right', r: onlyR[next], at: l });
+      rows.push({ kind: 'changed', l, r: onlyR[hit] });
+      next = hit + 1;
+    }
+    for (; next < onlyR.length; next++) rows.push({ kind: 'right', r: onlyR[next], at: i });
+    onlyL = []; onlyR = [];
+  };
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) { flush(); rows.push({ kind: 'same', l: i++, r: j++ }); }
+    else if (j < m && (i === n || lcs[i][j + 1] >= lcs[i + 1][j])) onlyR.push(j++);
+    else onlyL.push(i++);
+  }
+  flush();
+  return rows;
+}
+
+/** Lâmina vinda de outro arquivo; `id` só indica de qual lâmina copiar o espaçamento. */
+const foreign = (slide) => ({ k: nextKey++, id: S.disk_order[0] ?? 0, text: slide.text, fresh: true });
+const withText = (item, text) => (text === S.slides[item.id].text && !item.fresh
+  ? { k: item.k, id: item.id } : { ...item, text });
+
+function mini(number, title, src, text) {
+  const el = document.createElement('div');
+  el.className = 'mini';
+  let face;
+  if (src) {
+    face = document.createElement('img');
+    face.src = src; face.alt = '';
+  } else {
+    face = document.createElement('div');
+    face.className = 'text';
+    face.textContent = text.slice(0, 500) || '(empty slide)';
+  }
+  const foot = document.createElement('footer');
+  const num = document.createElement('strong');
+  num.textContent = number;
+  const name = document.createElement('span');
+  name.className = 'title';
+  name.textContent = title || '(untitled)';
+  foot.append(num, name);
+  el.append(face, foot);
+  return el;
+}
+
+function renderDiff() {
+  $('#dfundo').disabled = !undo.length;
+  if (!other) return;
+  const right = other.disk_order.map((id) => other.slides[id]);
+  const rows = diffRows(items, right);
+  const count = (kind) => rows.filter((row) => row.kind === kind).length;
+  const parts = [[count('changed'), 'different'], [count('left'), 'only here'], [count('right'), 'only in the other']]
+    .filter(([n]) => n).map(([n, label]) => `${n} ${label}`);
+  $('#dfsummary').textContent = parts.length ? parts.join(' · ') : 'Both files have the same slides.';
+  $('#dfall').disabled = !parts.length || !S.slides.length;
+
+  const leftCard = (l) => {
+    const item = items[l];
+    const src = item.text == null && S.thumbs.have[item.id] ? thumbSrc(item.id) : '';
+    return mini(l + 1, titleOf(item), src, textOf(item));
+  };
+  const rightCard = (r) => {
+    const slide = right[r];
+    const src = other.thumbs.have[slide.id]
+      ? `/thumb/${other.doc}/${slide.id}?g=${other.generation}&v=${other.thumbs.version}` : '';
+    return mini(r + 1, slide.title, src, slide.text);
+  };
+  const action = (label, title, run) => {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.title = title;
+    button.disabled = !S.slides.length;
+    button.onclick = () => { run(); renderDiff(); };
+    return button;
+  };
+  const blank = () => document.createElement('span');
+  const only = $('#dfonly').checked;
+
+  $('#dfrows').replaceChildren(...rows.filter((row) => !only || row.kind !== 'same').map((row) => {
+    const el = document.createElement('div');
+    el.className = 'dfrow ' + row.kind;
+    const mid = document.createElement('div');
+    mid.className = 'mid';
+    if (row.kind === 'same') {
+      mid.textContent = '=';
+      el.append(leftCard(row.l), mid, rightCard(row.r));
+    } else if (row.kind === 'changed') {
+      mid.append('different', action('← Use other', 'Replace this slide with the one from the other file',
+        () => commit(items.map((it, at) => (at === row.l ? withText(it, right[row.r].text) : it)))));
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Show Markdown';
+      const texts = document.createElement('div');
+      texts.className = 'dftext';
+      for (const text of [textOf(items[row.l]), right[row.r].text]) {
+        const pre = document.createElement('pre');
+        pre.textContent = text;
+        texts.append(pre);
+      }
+      details.append(summary, texts);
+      el.append(leftCard(row.l), mid, rightCard(row.r), details);
+    } else if (row.kind === 'left') {
+      mid.append('only here', action('Remove', 'Remove this slide from this file',
+        () => commit(items.filter((_, at) => at !== row.l))));
+      el.append(leftCard(row.l), mid, blank());
+    } else {
+      mid.append('only in the other', action('← Add', 'Copy this slide into this file, at this position',
+        () => commit([...items.slice(0, row.at), foreign(right[row.r]), ...items.slice(row.at)])));
+      el.append(blank(), mid, rightCard(row.r));
+    }
+    return el;
+  }));
+}
+
+/** Deixa as lâminas desta aba iguais às do outro arquivo, em um único passo desfazível. */
+function takeAll() {
+  const right = other.disk_order.map((id) => other.slides[id]);
+  const next = [];
+  for (const row of diffRows(items, right)) {
+    if (row.kind === 'same') next.push(items[row.l]);
+    else if (row.kind === 'changed') next.push(withText(items[row.l], right[row.r].text));
+    else if (row.kind === 'right') next.push(foreign(right[row.r]));
+  }
+  commit(next);
+  renderDiff();
+}
+
+async function loadOther() {
+  const res = await fetch(`/api/state?doc=${$('#dfother').value}`);
+  if (!res.ok) { other = null; $('#dfrows').replaceChildren(); $('#dfsummary').textContent = 'That file is no longer open.'; return; }
+  other = await res.json();
+  renderDiff();
+}
+
+function openDiffer() {
+  if (!S || tabs.length < 2) return;
+  $('#dfleft').textContent = cur.file;
+  $('#dfother').replaceChildren(...tabs.filter((tab) => tab !== cur).map((tab) => {
+    const option = document.createElement('option');
+    option.value = tab.doc;
+    option.textContent = tab.file;
+    option.title = tab.path;
+    return option;
+  }));
+  other = null;
+  $('#dfrows').replaceChildren();
+  differ.showModal();
+  loadOther();
+}
+
+$('#compare').onclick = openDiffer;
+$('#dfother').onchange = loadOther;
+$('#dfonly').onchange = renderDiff;
+$('#dfall').onclick = takeAll;
+$('#dfundo').onclick = () => { stepHistory(undo, redo); renderDiff(); };
+$('#dfclose').onclick = () => differ.close();
+
 // ---- controles ---------------------------------------------------------------
 
 $('#save').onclick = () => save(false);
@@ -812,7 +1033,7 @@ size.oninput = () => {
 };
 
 document.addEventListener('keydown', (e) => {
-  if (editor.open || openDlg.open) return;
+  if (editor.open || openDlg.open || differ.open) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   if (mod && key === 'o') { e.preventDefault(); return openDialog(); }

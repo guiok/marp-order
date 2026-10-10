@@ -18,6 +18,7 @@ without touching the content of the slides.
 - **Editor with live preview**: double-click opens the slide's Markdown and the result
   is redrawn as you type.
 - **Several files in tabs**, with a list of recent files and the last session restored.
+- **Compare and merge**: see which slides differ between two decks and copy them across.
 - **No reformatting**: unedited slides are moved byte for byte; the front matter stays
   where it is.
 - **Safe**: automatic backup, atomic writes and detection of external edits.
@@ -76,6 +77,7 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Save to the file | `Ctrl+S` |
 | Reload the file from disk | `Ctrl+R` |
 | Open another file | `Ctrl+O` or **+ Open** |
+| Compare with another open file | **Compare…** button |
 
 Each card shows its new position and, if the slide has moved, the position it has in the
 file (`was 8`).
@@ -107,6 +109,25 @@ dot on the tab marks unsaved changes.
 The list of open files is remembered: running `marp-order` with no file reopens the tabs
 of the last session. Recent files and the session are stored in
 `~/.config/marp-order/` (or `$XDG_CONFIG_HOME/marp-order/`).
+
+### Comparing and merging
+
+![Comparing two decks](docs/compare.png)
+
+With two or more files open, **Compare…** lines up the slides of the current tab with
+those of another open file (as saved on disk) and marks each difference:
+
+| Difference | What you can do |
+|---|---|
+| **different** – same title, other content | **← Use other** replaces your slide with the other one; *Show Markdown* shows both texts |
+| **only in the other** | **← Add** copies the slide into your file at that position |
+| **only here** | **Remove** deletes it from your file |
+
+**Take all from other** applies everything at once. Each action is a pending change in
+the current tab, exactly like a manual edit: it can be undone, and nothing is written
+until you save. The other file is never modified. Only slides are compared; the front
+matter (theme, global directives) is not merged, and images referenced by a copied slide
+are not copied.
 
 ### Options
 

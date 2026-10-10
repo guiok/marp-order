@@ -18,6 +18,7 @@ sem alterar o conteúdo das lâminas.
 - **Editor com pré-visualização ao vivo**: duplo clique abre o Markdown da lâmina e o
   resultado é redesenhado enquanto você digita.
 - **Vários arquivos em abas**, com lista de recentes e a última sessão restaurada.
+- **Comparação e merge**: veja quais lâminas diferem entre dois decks e copie de um para o outro.
 - **Não reformata nada**: lâminas não editadas são movidas byte a byte; o front-matter
   fica onde está.
 - **Seguro**: backup automático, gravação atômica e detecção de edição externa.
@@ -78,6 +79,7 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Salvar no arquivo | `Ctrl+S` |
 | Recarregar o arquivo do disco | `Ctrl+R` |
 | Abrir outro arquivo | `Ctrl+O` ou **+ Open** |
+| Comparar com outro arquivo aberto | botão **Compare…** |
 
 Cada cartão mostra a posição nova e, se a lâmina mudou de lugar, a posição que ela tem no
 arquivo (`was 8`).
@@ -109,6 +111,25 @@ enquanto você alterna, e um ponto na aba indica alterações não salvas.
 A lista de arquivos abertos é lembrada: rodar `marp-order` sem arquivo reabre as abas da
 última sessão. Os recentes e a sessão ficam em `~/.config/marp-order/` (ou
 `$XDG_CONFIG_HOME/marp-order/`).
+
+### Comparar e mesclar
+
+![Comparação de dois decks](docs/compare.png)
+
+Com dois ou mais arquivos abertos, **Compare…** alinha as lâminas da aba atual com as de
+outro arquivo aberto (como está salvo no disco) e marca cada diferença:
+
+| Diferença | O que dá para fazer |
+|---|---|
+| **different** – mesmo título, conteúdo diferente | **← Use other** troca a sua lâmina pela do outro; *Show Markdown* mostra os dois textos |
+| **only in the other** | **← Add** copia a lâmina para o seu arquivo, naquela posição |
+| **only here** | **Remove** apaga a lâmina do seu arquivo |
+
+**Take all from other** aplica tudo de uma vez. Cada ação vira uma alteração pendente na
+aba atual, como uma edição manual: pode ser desfeita, e nada é gravado até você salvar. O
+outro arquivo nunca é modificado. Só as lâminas são comparadas; o front-matter (tema,
+diretivas globais) não é mesclado, e as imagens referenciadas por uma lâmina copiada não
+são copiadas.
 
 ### Opções
 

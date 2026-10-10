@@ -54,6 +54,11 @@ edição está em outra pasta.
 `~/.config/marp-order/recent.json` guarda os últimos arquivos abertos e `session.json`,
 os que estão abertos agora; sem argumentos, o programa reabre os da sessão.
 
+A comparação é feita no navegador: as lâminas da aba atual (com as alterações pendentes)
+são alinhadas com as do outro arquivo pela maior subsequência comum dos textos; nas
+lacunas, lâminas de mesmo título formam um par "diferente". Uma lâmina copiada do outro
+arquivo entra na lista como uma entrada com texto novo, igual a uma edição.
+
 ## Divisão das lâminas
 
 O parser não é um parser Markdown completo: ele percorre o arquivo linha a linha com o
