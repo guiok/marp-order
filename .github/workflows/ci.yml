@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Build
+        run: cargo build --release
+      - name: Server and parser tests
+        run: cargo test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Interface logic tests
+        run: node --test tests/ui_logic.test.js
+      - name: Slide splitting against marp-cli
+        run: |
+          npm install -g @marp-team/marp-cli
+          cargo test -- --ignored
