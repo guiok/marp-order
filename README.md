@@ -23,6 +23,8 @@ without touching the content of the slides.
   where it is.
 - **Safe**: automatic backup, atomic writes and detection of external edits.
 - **English and Portuguese** interface, switchable at any time.
+- **Works alongside AI agents** that edit the `.md` file: see
+  [Writing slides with an AI agent](#writing-slides-with-an-ai-agent).
 
 ## Requirements
 
@@ -178,6 +180,36 @@ marp-order talk.md -- --theme-set theme.css
 ```
 
 The marp-cli command can also be set with the `MARP_ORDER_MARP_CMD` environment variable.
+
+## Writing slides with an AI agent
+
+marp-order has no AI built in, and does not need one: a deck is a plain `.md` file, so any
+coding agent that can edit files — Claude Code, GitHub Copilot, Gemini CLI, Codex and the
+like — can write and revise the slides while marp-order shows the result.
+
+1. Open the deck in marp-order and, in a terminal or editor next to it, start your agent
+   in the deck's folder.
+2. Ask for what you want in terms of the file: *"In `talk.md`, shorten slide 7 to three
+   bullets and add speaker notes to every slide that has none."*
+3. When the agent writes the file, marp-order shows **The file was changed outside
+   marp-order**. Press `Ctrl+R` to reload and see the new slides.
+4. Rearrange, fix details in the editor and save as usual.
+
+Things that make this work well:
+
+- **One writer at a time.** Save (or discard) your pending changes before asking the
+  agent to edit. If the file changes while you have unsaved changes, marp-order blocks
+  the save until you choose between reloading and overwriting.
+- **Review instead of trusting.** Ask the agent to write to a copy (`talk-ai.md`), open
+  both files and use **Compare…** to see what changed slide by slide and take only what
+  you want.
+- **Tell the agent the rules of the deck.** It helps to say that slides are separated by
+  `---`, that the front matter at the top must stay, and that comments such as
+  `<!-- _class: lead -->` are Marp directives, not notes.
+- **You can always go back.** marp-order keeps a backup before its first write of each
+  run (see below); for the agent's own edits, keep the deck under version control.
+
+Remember that the agent sends the content of your slides to its provider.
 
 ## What happens to your file
 

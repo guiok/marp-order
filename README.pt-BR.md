@@ -23,6 +23,8 @@ sem alterar o conteúdo das lâminas.
   fica onde está.
 - **Seguro**: backup automático, gravação atômica e detecção de edição externa.
 - **Interface em português e inglês**, com troca a qualquer momento.
+- **Funciona ao lado de agentes de IA** que editam o arquivo `.md`: veja
+  [Escrever slides com um agente de IA](#escrever-slides-com-um-agente-de-ia).
 
 > Os nomes de botões citados abaixo são os da interface em inglês; em português eles
 > aparecem traduzidos (**Discard** é **Descartar**, **Compare…** é **Comparar…** etc.).
@@ -181,6 +183,38 @@ marp-order aula.md -- --theme-set tema.css
 ```
 
 O comando do marp-cli também pode ser definido pela variável `MARP_ORDER_MARP_CMD`.
+
+## Escrever slides com um agente de IA
+
+O marp-order não tem IA embutida, e não precisa: um deck é um arquivo `.md` comum, então
+qualquer agente de código que edite arquivos — Claude Code, GitHub Copilot, Gemini CLI,
+Codex e similares — pode escrever e revisar as lâminas enquanto o marp-order mostra o
+resultado.
+
+1. Abra o deck no marp-order e, em um terminal ou editor ao lado, inicie o seu agente na
+   pasta do deck.
+2. Peça o que quer em termos do arquivo: *"Em `aula.md`, reduza a lâmina 7 a três tópicos
+   e acrescente notas do apresentador em toda lâmina que não tiver."*
+3. Quando o agente grava o arquivo, o marp-order mostra **O arquivo foi alterado fora do
+   marp-order**. Aperte `Ctrl+R` para recarregar e ver as lâminas novas.
+4. Reorganize, acerte detalhes no editor e salve como de costume.
+
+O que faz isso funcionar bem:
+
+- **Um escritor por vez.** Salve (ou descarte) as suas alterações pendentes antes de pedir
+  ao agente para editar. Se o arquivo mudar enquanto você tem alterações não salvas, o
+  marp-order bloqueia o salvamento até você escolher entre recarregar e sobrescrever.
+- **Revise em vez de confiar.** Peça ao agente para gravar em uma cópia (`aula-ia.md`),
+  abra os dois arquivos e use **Compare…** para ver o que mudou lâmina a lâmina e
+  aproveitar só o que quiser.
+- **Conte ao agente as regras do deck.** Ajuda dizer que as lâminas são separadas por
+  `---`, que o front-matter do início precisa ficar, e que comentários como
+  `<!-- _class: lead -->` são diretivas do Marp, não notas.
+- **Sempre dá para voltar.** O marp-order guarda um backup antes da primeira gravação de
+  cada execução (veja abaixo); para as edições do próprio agente, mantenha o deck sob
+  controle de versão.
+
+Lembre que o agente envia o conteúdo das suas lâminas ao fornecedor dele.
 
 ## O que acontece com o seu arquivo
 
