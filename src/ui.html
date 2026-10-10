@@ -63,13 +63,26 @@
            background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 6px;
            opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
   #toast.show { opacity: 1; }
-  dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(900px, 94vw);
+  .card .face { position: relative; }
+  .card .edited { display: none; position: absolute; left: 6px; top: 6px; padding: 1px 7px;
+                  border-radius: 10px; background: var(--warn); color: #fff; font-size: 11px; font-weight: 600; }
+  .card.changed .edited { display: block; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(1500px, 96vw);
            background: var(--panel); color: var(--text); }
   dialog::backdrop { background: rgba(0, 0, 0, .55); }
-  dialog img { display: block; width: 100%; }
-  dialog pre { margin: 0; padding: 12px 16px; max-height: 40vh; overflow: auto; white-space: pre-wrap;
-               font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; border-top: 1px solid var(--line); }
-  dialog form { padding: 8px 16px; text-align: right; border-top: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+  .bar .grow { flex: 1; color: var(--muted); font-size: 12px; }
+  .bar .grow.error { color: var(--danger); }
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 14px;
+           border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+  #edtext { margin: 12px 0; min-height: 62vh; resize: vertical; padding: 10px; border-radius: 6px;
+            border: 1px solid var(--line); background: var(--bg); color: var(--text); tab-size: 2;
+            font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  #edview { position: relative; margin: 12px 0; align-self: start; aspect-ratio: 16 / 9;
+            border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+  #edview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  #edview iframe.loading { opacity: 0; }
   .help { color: var(--muted); padding: 0 16px 20px; font-size: 12px; }
   kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--panel); }
 </style>
@@ -99,14 +112,21 @@
 
 <p class="help">
   Arraste para reordenar · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+clique seleciona várias ·
-  <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> move a seleção · duplo clique amplia ·
+  <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> move a seleção · duplo clique edita ·
   <span class="flag">⚠</span> indica lâmina cujo efeito depende da posição (passe o mouse para ver).
 </p>
 
-<dialog id="zoom">
-  <img alt="">
-  <pre></pre>
-  <form method="dialog"><button>Fechar</button></form>
+<dialog id="editor">
+  <div class="bar"><strong id="edtitle"></strong><span id="edstatus" class="grow"></span></div>
+  <div class="panes">
+    <textarea id="edtext" spellcheck="false" aria-label="Markdown da lâmina"></textarea>
+    <div id="edview"></div>
+  </div>
+  <div class="bar">
+    <span class="grow"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> aplica · <kbd>Ctrl</kbd>+<kbd>S</kbd> aplica e salva · <kbd>Esc</kbd> cancela</span>
+    <button id="edcancel">Cancelar</button>
+    <button id="edapply" class="primary">Aplicar</button>
+  </div>
 </dialog>
 <div id="toast"></div>
 
@@ -116,7 +136,7 @@ const $ = (s) => document.querySelector(s);
 const grid = $('#grid'), bar = $('#bar');
 
 let S = null;            // estado vindo do servidor
-let items = [];          // ordem atual: [{k: chave do cartão, id: lâmina}]
+let items = [];          // ordem atual: [{k: chave do cartão, id: lâmina, text: se editada}]
 let sel = new Set();     // chaves selecionadas
 let anchor = null;       // último cartão clicado
 let undo = [], redo = [];
@@ -140,7 +160,23 @@ function toast(message) {
 
 const ids = () => items.map((it) => it.id);
 const sameOrder = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
-const isDirty = () => !sameOrder(ids(), S.disk_order);
+const isDirty = () => !sameOrder(ids(), S.disk_order) || items.some((it) => it.text != null);
+const textOf = (item) => item.text ?? S.slides[item.id].text;
+const entry = (item) => (item.text == null ? { id: item.id } : { id: item.id, text: item.text });
+
+function titleOf(item) {
+  if (item.text == null) return S.slides[item.id].title;
+  let fallback = '';
+  for (const raw of item.text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('<') || line.startsWith('![') || line.startsWith('```')) continue;
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    const clean = (heading ? heading[1] : line).replace(/\*\*|__|`/g, '').trim();
+    if (heading) return clean;
+    fallback = fallback || clean;
+  }
+  return fallback;
+}
 const selected = () => items.filter((it) => sel.has(it.k));
 const cardList = () => [...grid.querySelectorAll('.card')];
 
@@ -158,7 +194,7 @@ function adopt(state) {
 }
 
 function commit(next) {
-  if (sameOrder(next.map((it) => it.k), items.map((it) => it.k))) return;
+  if (sameOrder(next, items)) return;
   undo.push(items);
   redo = [];
   items = next;
@@ -181,9 +217,6 @@ function makeCard(item) {
   const foot = document.createElement('footer');
   const num = document.createElement('span'); num.className = 'num';
   const title = document.createElement('span'); title.className = 'title';
-  title.textContent = slide.title || '(sem título)';
-  title.title = slide.title;
-  if (!slide.title) title.classList.add('empty');
   const was = document.createElement('span'); was.className = 'was';
   foot.append(num, title);
   if (slide.warn.length) {
@@ -195,25 +228,37 @@ function makeCard(item) {
   }
   foot.append(was);
   el.append(face, foot);
-  fillFace(el, item.id);
   return el;
 }
 
-function fillFace(el, id) {
+/** Atualiza título e face do cartão; a face só é refeita quando o conteúdo muda. */
+function paint(el, item) {
+  const text = titleOf(item);
+  const title = el.querySelector('.title');
+  title.textContent = text || '(sem título)';
+  title.title = text;
+  title.classList.toggle('empty', !text);
+  el.classList.toggle('changed', item.text != null);
+
   const face = el.querySelector('.face');
-  const want = S.thumbs.have[id] ? thumbSrc(id) : '';
-  if (face.dataset.src === want && face.firstChild) return;
-  face.dataset.src = want;
-  if (want) {
-    const img = document.createElement('img');
-    img.src = want; img.alt = ''; img.loading = 'lazy'; img.draggable = false;
-    face.replaceChildren(img);
+  const src = S.thumbs.have[item.id] ? thumbSrc(item.id) : '';
+  const key = src + '\n' + (item.text ?? '');
+  if (face.dataset.key === key) return;
+  face.dataset.key = key;
+  const badge = document.createElement('span');
+  badge.className = 'edited';
+  badge.textContent = 'editada';
+  badge.title = 'A miniatura é atualizada ao salvar.';
+  let content;
+  if (src) {
+    content = document.createElement('img');
+    content.src = src; content.alt = ''; content.loading = 'lazy'; content.draggable = false;
   } else {
-    const text = document.createElement('div');
-    text.className = 'text';
-    text.textContent = S.slides[id].text.slice(0, 600) || '(lâmina vazia)';
-    face.replaceChildren(text);
+    content = document.createElement('div');
+    content.className = 'text';
+    content.textContent = textOf(item).slice(0, 600) || '(lâmina vazia)';
   }
+  face.replaceChildren(content, badge);
 }
 
 function render() {
@@ -224,6 +269,7 @@ function render() {
   items.forEach((item, i) => {
     let el = cards.get(item.k);
     if (!el) { el = makeCard(item); cards.set(item.k, el); }
+    paint(el, item);
     el.querySelector('.num').textContent = i + 1;
     const origin = S.disk_order.indexOf(item.id);
     const was = el.querySelector('.was');
@@ -290,7 +336,7 @@ function duplicateSelection() {
   const next = [], fresh = new Set();
   for (const it of items) {
     next.push(it);
-    if (sel.has(it.k)) { const copy = { k: nextKey++, id: it.id }; next.push(copy); fresh.add(copy.k); }
+    if (sel.has(it.k)) { const copy = { ...it, k: nextKey++ }; next.push(copy); fresh.add(copy.k); }
   }
   sel = fresh;
   commit(next);
@@ -386,14 +432,104 @@ grid.addEventListener('click', (e) => {
 });
 grid.addEventListener('dblclick', (e) => {
   const el = e.target.closest('.card');
-  if (!el) return;
-  const item = items.find((it) => it.k === Number(el.dataset.k));
-  const img = $('#zoom img');
-  img.hidden = !S.thumbs.have[item.id];
-  if (!img.hidden) img.src = thumbSrc(item.id);
-  $('#zoom pre').textContent = S.slides[item.id].text || '(lâmina vazia)';
-  $('#zoom').showModal();
+  if (el) openEditor(items.find((it) => it.k === Number(el.dataset.k)));
 });
+
+// ---- editor de lâmina ------------------------------------------------------
+
+const editor = $('#editor'), edtext = $('#edtext'), edview = $('#edview');
+let editing = null;      // {k, initial, busy, again}
+
+function openEditor(item) {
+  editing = { k: item.k, initial: textOf(item) };
+  edtext.value = editing.initial;
+  $('#edtitle').textContent = `Lâmina ${items.indexOf(item) + 1}`;
+  edview.replaceChildren();
+  editor.showModal();
+  edtext.focus();
+  refreshPreview();
+}
+
+function edStatus(message, isError) {
+  const el = $('#edstatus');
+  el.textContent = message;
+  el.classList.toggle('error', !!isError);
+}
+
+/** Pede ao servidor o rascunho renderizado; nunca há mais de um pedido em andamento. */
+async function refreshPreview() {
+  const session = editing;
+  if (!session) return;
+  if (session.busy) { session.again = true; return; }
+  session.busy = true;
+  edStatus('atualizando…');
+  try {
+    const slides = items.map((it) => (it.k === session.k ? { id: it.id, text: edtext.value } : entry(it)));
+    const index = items.findIndex((it) => it.k === session.k);
+    const res = await post('/api/preview', { generation: S.generation, slides, index });
+    const body = await res.json();
+    if (editing === session) {
+      if (res.ok) { showPreview(`/preview/slide.html?page=${body.page}&t=${Date.now()}`); edStatus(''); }
+      else edStatus(body.error, true);
+    }
+  } catch {
+    if (editing === session) edStatus('sem resposta do marp-order', true);
+  }
+  session.busy = false;
+  if (editing === session && session.again) { session.again = false; refreshPreview(); }
+}
+
+/** Carrega a nova versão por baixo e só então troca, para a lâmina não piscar. */
+function showPreview(src) {
+  const next = document.createElement('iframe');
+  next.className = 'loading';
+  next.title = 'Pré-visualização da lâmina';
+  next.onload = () => {
+    for (const old of [...edview.children]) if (old !== next) old.remove();
+    next.classList.remove('loading');
+  };
+  next.src = src;
+  edview.append(next);
+}
+
+function closeEditor() {
+  editing = null;
+  editor.close();
+  edview.replaceChildren();
+}
+
+function applyEdit() {
+  const k = editing.k, text = edtext.value.trim();
+  closeEditor();
+  commit(items.map((it) => {
+    if (it.k !== k || text === textOf(it)) return it;
+    return text === S.slides[it.id].text ? { k: it.k, id: it.id } : { ...it, text };
+  }));
+}
+
+function cancelEdit() {
+  const changed = edtext.value.trim() !== editing.initial.trim();
+  if (!changed || confirm('Descartar as alterações desta lâmina?')) closeEditor();
+}
+
+let edTimer = null;
+edtext.addEventListener('input', () => {
+  clearTimeout(edTimer);
+  edTimer = setTimeout(refreshPreview, 200);
+});
+editor.addEventListener('cancel', (e) => { e.preventDefault(); cancelEdit(); });
+editor.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const key = e.key.toLowerCase();
+  if (key !== 'enter' && key !== 's') return;
+  // sem isto o atalho global de Ctrl+S salvaria uma segunda vez
+  e.preventDefault();
+  e.stopPropagation();
+  applyEdit();
+  if (key === 's') save(false);
+});
+$('#edapply').onclick = applyEdit;
+$('#edcancel').onclick = cancelEdit;
 
 // ---- servidor --------------------------------------------------------------
 
@@ -404,7 +540,7 @@ async function save(force) {
   if (removed && !force && !confirm(`${removed} lâmina(s) serão removidas do arquivo. Continuar?`)) return;
   let res;
   try {
-    res = await post('/api/save', { generation: S.generation, order, force: !!force });
+    res = await post('/api/save', { generation: S.generation, slides: items.map(entry), force: !!force });
   } catch {
     return toast('Não foi possível falar com o marp-order.');
   }
@@ -416,10 +552,15 @@ async function save(force) {
     return;
   }
   if (!res.ok) return toast('Erro ao salvar: ' + body.error);
-  S.disk_order = body.disk_order;
-  S.thumbs = body.thumbs;
-  render();
-  showStatus(body);
+  if (body.generation !== S.generation) {
+    // houve edição de conteúdo: o servidor releu o arquivo e renumerou as lâminas
+    adopt(await (await fetch('/api/state')).json());
+  } else {
+    S.disk_order = body.disk_order;
+    S.thumbs = body.thumbs;
+    render();
+    showStatus(body);
+  }
   toast(`Arquivo salvo. Backup do original: ${body.backup}`);
 }
 
@@ -445,7 +586,7 @@ async function poll() {
   if (status.generation !== S.generation) return adopt(await (await fetch('/api/state')).json());
   const fresh = status.thumbs.version !== S.thumbs.version;
   S.thumbs = status.thumbs;
-  if (fresh) for (const item of items) fillFace(cards.get(item.k), item.id);
+  if (fresh) for (const item of items) paint(cards.get(item.k), item);
   showStatus(status);
 }
 
@@ -470,7 +611,7 @@ size.oninput = () => {
 };
 
 document.addEventListener('keydown', (e) => {
-  if (!S || $('#zoom').open) return;
+  if (!S || editor.open) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   let handled = true;

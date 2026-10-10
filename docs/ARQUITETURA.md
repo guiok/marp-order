@@ -7,7 +7,8 @@ desejada.
 ```
 apresentacao.md ──► deck.rs (parse) ──► main.rs (estado + HTTP) ◄──► ui.html (navegador)
         ▲                                   │         │
-        └──────── deck.rs (compose) ◄───────┘         └──► thumbs.rs ──► marp-cli ──► JPEGs
+        └──────── deck.rs (compose) ◄───────┘         ├──► thumbs.rs ──► marp-cli ──► JPEGs
+                                                      └──► preview.rs ─► marp --watch ─► HTML
 ```
 
 | Arquivo | Papel |
@@ -15,6 +16,7 @@ apresentacao.md ──► deck.rs (parse) ──► main.rs (estado + HTTP) ◄�
 | `src/deck.rs` | Divide o arquivo em cabeçalho + lâminas e o remonta em outra ordem. Sem E/S. |
 | `src/main.rs` | Linha de comando, estado, rotas HTTP, backup e gravação atômica. |
 | `src/thumbs.rs` | Thread que chama o marp-cli e associa cada imagem a uma lâmina. |
+| `src/preview.rs` | Pré-visualização ao vivo do editor, com um `marp --watch` persistente. |
 | `src/ui.html` | Interface (HTML, CSS e JavaScript puros), embutida no binário. |
 
 Dependências: `tiny_http` e `serde_json`.
@@ -30,9 +32,14 @@ Slide { lead, text, heading_start, lead_comment }
 - `lead` é a linha separadora que precedia a lâmina (`---`, `***`…), como estava escrita.
 - `heading_start` indica lâmina aberta por um título de `headingDivider`, sem separador.
 
-As lâminas são identificadas pelo índice que tinham quando o arquivo foi lido. Esse índice
-não muda entre salvamentos — só quando o arquivo é recarregado do disco —, o que permite
-desfazer alterações mesmo depois de salvar.
+As lâminas são identificadas pelo índice que tinham quando o arquivo foi lido. O navegador
+envia a lista de posições desejada, cada uma com o índice da lâmina e, se ela foi editada,
+o texto novo (`Entry = (usize, Option<String>)`).
+
+Salvar só uma reordenação não muda os índices, o que permite desfazer mesmo depois de
+salvar. Salvar com edições é diferente: como o texto novo pode criar ou fundir lâminas, o
+arquivo gravado é relido e vira a nova base (`App::adopt`), com índices renumerados. As
+miniaturas das lâminas intactas são reaproveitadas.
 
 ## Divisão das lâminas
 
@@ -68,15 +75,19 @@ Lido do front-matter ou de um comentário (`<!-- headingDivider: 2 -->`); aceita
 
 ## Remontagem (`Deck::compose`)
 
-Recebe uma lista de índices, que podem faltar (lâmina removida) ou repetir (duplicada).
+Recebe uma lista de entradas; os índices podem faltar (lâmina removida) ou repetir
+(duplicada).
 
-1. Ordem idêntica à original devolve `source` sem tocar em nada.
+1. Ordem idêntica à original, sem edições, devolve `source` sem tocar em nada.
 2. Se uma lâmina vem logo depois da mesma vizinha que tinha no arquivo, o par é copiado
    como estava, com o separador e o espaçamento originais.
 3. Entre lâminas que não eram vizinhas, garante-se uma linha em branco antes do separador.
    Sem ela, `texto` seguido de `---` viraria título setext e as duas lâminas se fundiriam.
 4. Lâminas `heading_start` não recebem separador: o título já divide.
 5. O final do arquivo (com ou sem quebra de linha) é mantido como no original.
+6. Uma lâmina editada recebe o texto novo entre as linhas em branco que cercavam o
+   original, com as quebras de linha no estilo do arquivo (LF ou CRLF). Ela é sempre
+   tratada como "não vizinha" (regra 3), e `heading_start` é recalculado sobre o texto novo.
 
 ## Miniaturas
 
@@ -93,6 +104,36 @@ divisão pode estar errada — é a rede de segurança contra casos que o parser
 Uma renderização é disparada ao abrir, ao recarregar e depois de cada salvamento. Se o
 arquivo mudar durante a renderização, o resultado é descartado e ela é refeita.
 
+## Pré-visualização do editor
+
+Converter o deck inteiro a cada tecla com uma execução avulsa do marp-cli leva segundos,
+quase tudo na partida do Node. Por isso `preview.rs` mantém um `marp --watch --template
+bare` rodando sobre um rascunho (`draft.md`) em uma pasta temporária:
+
+1. O navegador envia o estado atual (ordem + edições) e a posição da lâmina em edição.
+2. O servidor monta o rascunho com `compose`, grava `draft.md` e espera o `draft.html`.
+3. O editor carrega `/preview/slide.html?page=N` em um `<iframe>` oculto e troca pelo
+   visível quando termina de carregar, para a lâmina não piscar.
+
+O rascunho é o deck inteiro, não só a lâmina, para que estilos globais, numeração e
+diretivas herdadas saiam como no resultado final; a página servida esconde as outras
+lâminas por CSS. Detalhes que não são óbvios:
+
+- **Marca de versão.** O marp-cli pode gravar o HTML de uma versão anterior logo depois da
+  nossa escrita. Cada rascunho leva no fim um `<style>` com uma classe numerada, e o
+  servidor só responde quando essa marca aparece no HTML.
+- **Alterações perdidas.** O marp-cli ignora escritas feitas enquanto está iniciando; se a
+  marca não aparece em 700 ms, o rascunho é regravado.
+- **Recursos relativos.** O rascunho fica fora da pasta do deck, então `/preview/<caminho>`
+  serve imagens, fontes e CSS a partir dela (somente tipos de mídia conhecidos, e nunca
+  acima da pasta do deck).
+- **Recarga automática.** O HTML do modo `--watch` traz um script que recarrega a página por
+  websocket; ele é removido, e a resposta leva `Content-Security-Policy: connect-src 'none'`.
+- **Processo órfão.** O marp-cli é iniciado por um pequeno script `sh` que o encerra quando
+  a entrada padrão fecha, isto é, quando o marp-order termina, mesmo que seja morto.
+
+O marp-cli em modo `--watch` abre um servidor websocket próprio na porta 37717.
+
 ## API HTTP
 
 | Rota | Função |
@@ -101,7 +142,10 @@ arquivo mudar durante a renderização, o resultado é descartado e ela é refei
 | `GET /api/state` | Lâminas (título, texto, avisos) e estado completo |
 | `GET /api/status` | Consulta periódica: edição externa e situação das miniaturas |
 | `GET /thumb/<id>` | Miniatura da lâmina |
-| `POST /api/save` | `{generation, order, force}` — grava a nova ordem |
+| `GET /preview/slide.html?page=N` | Lâmina N do rascunho em edição |
+| `GET /preview/<caminho>` | Imagens e fontes da pasta do deck |
+| `POST /api/save` | `{generation, slides: [{id, text?}], force}` — grava ordem e edições |
+| `POST /api/preview` | `{generation, slides, index}` — converte o rascunho; devolve a página |
 | `POST /api/reload` | Relê o arquivo do disco |
 | `POST /api/rethumb` | Refaz as miniaturas |
 

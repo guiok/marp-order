@@ -25,6 +25,8 @@ const FORWARD_DIRECTIVES: &[&str] = &[
     "lang",
 ];
 
+use std::borrow::Cow;
+
 pub struct Slide {
     /// Linha separadora (`---`) que precedia a lâmina no arquivo, com a quebra de linha.
     pub lead: Option<String>,
@@ -40,8 +42,12 @@ pub struct Deck {
     pub source: String,
     pub head: String,
     pub slides: Vec<Slide>,
+    divider: Vec<u8>,
     newline: &'static str,
 }
+
+/// Uma posição do arquivo a montar: índice da lâmina e, se editada, o texto novo.
+pub type Entry = (usize, Option<String>);
 
 #[derive(PartialEq, Clone, Copy)]
 enum Prev {
@@ -94,192 +100,208 @@ impl Builder<'_> {
     }
 }
 
-impl Deck {
-    pub fn parse(source: String) -> Deck {
-        let newline = if source.contains("\r\n") { "\r\n" } else { "\n" };
-        let head_len = front_matter_len(&source);
-        let divider = heading_divider(&source[..head_len], &source[head_len..]);
+/// Divide `source` em lâminas a partir de `head_len`, seguindo as regras do Marpit.
+fn scan(source: &str, head_len: usize, divider: &[u8]) -> Vec<Slide> {
+    let mut b = Builder {
+        source,
+        slides: Vec::new(),
+        start: head_len,
+        lead: None,
+        heading_start: false,
+        lead_comment: false,
+    };
+    let mut prev = Prev::Blank;
+    let mut container = false; // dentro de lista ou citação
+    let mut seen_visible = false; // algum conteúdo visível no deck até aqui
+    let mut slide_visible = false;
+    let mut slide_text = false; // a lâmina atual tem alguma linha não vazia
+    let mut para = Mark::default();
+    let mut fence: Option<(char, usize)> = None;
+    let mut raw_end: Option<&'static str> = None;
 
-        let mut b = Builder {
-            source: &source,
-            slides: Vec::new(),
-            start: head_len,
-            lead: None,
-            heading_start: false,
-            lead_comment: false,
+    let mut off = head_len;
+    for line in source[head_len..].split_inclusive('\n') {
+        let ls = off;
+        off += line.len();
+        let (indent, rest) = split_indent(line.trim_end_matches(['\n', '\r']));
+        let here = Mark {
+            at: ls,
+            seen_visible,
+            slide_visible,
+            slide_text,
         };
-        let mut prev = Prev::Blank;
-        let mut container = false; // dentro de lista ou citação
-        let mut seen_visible = false; // algum conteúdo visível no deck até aqui
-        let mut slide_visible = false;
-        let mut slide_text = false; // a lâmina atual tem alguma linha não vazia
-        let mut para = Mark::default();
-        let mut fence: Option<(char, usize)> = None;
-        let mut raw_end: Option<&'static str> = None;
 
-        let mut off = head_len;
-        for line in source[head_len..].split_inclusive('\n') {
-            let ls = off;
-            off += line.len();
-            let (indent, rest) = split_indent(line.trim_end_matches(['\n', '\r']));
-            let here = Mark {
-                at: ls,
-                seen_visible,
-                slide_visible,
-                slide_text,
-            };
-
-            if let Some(f) = fence {
-                if fence_closes(rest, f) {
-                    fence = None;
-                }
-                prev = Prev::Other;
-                continue;
+        if let Some(f) = fence {
+            if fence_closes(rest, f) {
+                fence = None;
             }
-            if let Some(end) = raw_end {
-                let closed = rest.to_ascii_lowercase().contains(end);
-                if closed {
-                    raw_end = None;
-                }
-                if end != "-->" || (closed && !rest.ends_with(end)) {
-                    seen_visible = true;
-                    slide_visible = true;
-                }
-                prev = Prev::Other;
-                continue;
+            prev = Prev::Other;
+            continue;
+        }
+        if let Some(end) = raw_end {
+            let closed = rest.to_ascii_lowercase().contains(end);
+            if closed {
+                raw_end = None;
             }
-            if rest.is_empty() {
-                prev = Prev::Blank;
-                continue;
-            }
-            slide_text = true;
-            if indent >= 4 && !container {
-                // código indentado ou continuação de parágrafo: nunca separa
+            if end != "-->" || (closed && !rest.ends_with(end)) {
                 seen_visible = true;
                 slide_visible = true;
-                if prev != Prev::Para {
-                    prev = Prev::Other;
-                }
-                continue;
             }
-            let nested = container && indent >= 2;
-            let setext_ok = prev == Prev::Para && !container;
+            prev = Prev::Other;
+            continue;
+        }
+        if rest.is_empty() {
+            prev = Prev::Blank;
+            continue;
+        }
+        slide_text = true;
+        if indent >= 4 && !container {
+            // código indentado ou continuação de parágrafo: nunca separa
+            seen_visible = true;
+            slide_visible = true;
+            if prev != Prev::Para {
+                prev = Prev::Other;
+            }
+            continue;
+        }
+        let nested = container && indent >= 2;
+        let setext_ok = prev == Prev::Para && !container;
 
-            if let Some((ch, pure)) = thematic_break(rest) {
-                if nested {
-                    prev = Prev::Other;
-                    continue;
-                }
-                if ch == '-' && pure && setext_ok {
-                    // sublinhado de título setext (`Título\n---`), não é separador
-                    if divider.contains(&2) {
-                        b.heading(para);
-                    }
-                    prev = Prev::Other;
-                    continue;
-                }
-                b.cut(ls, off, Some(line.to_string()), false);
-                prev = Prev::Blank;
-                container = false;
-                seen_visible = true;
-                slide_visible = false;
-                slide_text = false;
+        if let Some((ch, pure)) = thematic_break(rest) {
+            if nested {
+                prev = Prev::Other;
                 continue;
             }
-            if setext_ok && rest.chars().all(|c| c == '=') {
-                if divider.contains(&1) {
+            if ch == '-' && pure && setext_ok {
+                // sublinhado de título setext (`Título\n---`), não é separador
+                if divider.contains(&2) {
                     b.heading(para);
                 }
                 prev = Prev::Other;
                 continue;
             }
-            if let Some((open_len, end)) = raw_html_opens(rest) {
-                let closed = rest[open_len..].to_ascii_lowercase().contains(end);
-                if !closed {
-                    raw_end = Some(end);
-                }
-                if end != "-->" || (closed && !rest.ends_with(end)) {
-                    seen_visible = true;
-                    slide_visible = true;
-                }
-                prev = Prev::Other;
-                continue;
-            }
-            // daqui em diante toda linha é conteúdo visível
+            b.cut(ls, off, Some(line.to_string()), false);
+            prev = Prev::Blank;
+            container = false;
             seen_visible = true;
-            slide_visible = true;
+            slide_visible = false;
+            slide_text = false;
+            continue;
+        }
+        if setext_ok && rest.chars().all(|c| c == '=') {
+            if divider.contains(&1) {
+                b.heading(para);
+            }
+            prev = Prev::Other;
+            continue;
+        }
+        if let Some((open_len, end)) = raw_html_opens(rest) {
+            let closed = rest[open_len..].to_ascii_lowercase().contains(end);
+            if !closed {
+                raw_end = Some(end);
+            }
+            if end != "-->" || (closed && !rest.ends_with(end)) {
+                seen_visible = true;
+                slide_visible = true;
+            }
+            prev = Prev::Other;
+            continue;
+        }
+        // daqui em diante toda linha é conteúdo visível
+        seen_visible = true;
+        slide_visible = true;
 
-            if let Some(f) = fence_opens(rest) {
-                fence = Some(f);
+        if let Some(f) = fence_opens(rest) {
+            fence = Some(f);
+            prev = Prev::Other;
+            continue;
+        }
+        if is_container_marker(rest) {
+            container = true;
+            prev = Prev::Para;
+            continue;
+        }
+        if container && prev == Prev::Blank && indent < 2 {
+            container = false;
+        }
+        if !nested {
+            if let Some(level) = atx_level(rest) {
+                if divider.contains(&level) {
+                    b.heading(here);
+                }
+                container = false;
                 prev = Prev::Other;
                 continue;
             }
-            if is_container_marker(rest) {
-                container = true;
-                prev = Prev::Para;
-                continue;
-            }
-            if container && prev == Prev::Blank && indent < 2 {
-                container = false;
-            }
-            if !nested {
-                if let Some(level) = atx_level(rest) {
-                    if divider.contains(&level) {
-                        b.heading(here);
-                    }
-                    container = false;
-                    prev = Prev::Other;
-                    continue;
-                }
-            }
-            if prev != Prev::Para {
-                para = here;
-            }
-            prev = Prev::Para;
         }
-        let end = source.len();
-        b.cut(end, end, None, false);
-        let slides = b.slides;
+        if prev != Prev::Para {
+            para = here;
+        }
+        prev = Prev::Para;
+    }
+    let end = source.len();
+    b.cut(end, end, None, false);
+    b.slides
+}
 
+impl Deck {
+    pub fn parse(source: String) -> Deck {
+        let newline = if source.contains("\r\n") { "\r\n" } else { "\n" };
+        let head_len = front_matter_len(&source);
+        let divider = heading_divider(&source[..head_len], &source[head_len..]);
+        let slides = scan(&source, head_len, &divider);
         let head = source[..head_len].to_string();
         Deck {
             source,
             head,
             slides,
+            divider,
             newline,
         }
     }
 
-    /// Monta o arquivo com as lâminas na ordem dada (índices de `slides`;
-    /// índices podem faltar ou repetir). A ordem original devolve o arquivo
-    /// byte a byte, e pares de lâminas que já eram vizinhas não são tocados.
-    pub fn compose(&self, order: &[usize]) -> String {
+    /// Monta o arquivo com as lâminas na ordem dada. Cada entrada é o índice da lâmina
+    /// em `slides` (pode faltar ou repetir) e, se ela foi editada, o texto novo.
+    /// A ordem original sem edições devolve o arquivo byte a byte, e pares de lâminas
+    /// intactas que já eram vizinhas não são tocados.
+    pub fn compose(&self, entries: &[Entry]) -> String {
         let n = self.slides.len();
-        if order.len() == n && order.iter().enumerate().all(|(i, &id)| i == id) {
+        let untouched = entries.iter().all(|(_, edit)| edit.is_none());
+        if untouched && entries.len() == n && entries.iter().enumerate().all(|(i, e)| i == e.0) {
             return self.source.clone();
         }
         let mut out = self.head.clone();
-        for (pos, &id) in order.iter().enumerate() {
-            let slide = &self.slides[id];
+        for (pos, (id, edit)) in entries.iter().enumerate() {
+            let slide = &self.slides[*id];
+            let (text, heading_start) = match edit {
+                Some(body) => {
+                    let text = self.rewrap(slide, body);
+                    let heading_start = !self.divider.is_empty()
+                        && scan(&text, 0, &self.divider)[0].heading_start;
+                    (Cow::Owned(text), heading_start)
+                }
+                None => (Cow::Borrowed(slide.text.as_str()), slide.heading_start),
+            };
             if pos == 0 {
-                out.push_str(&slide.text);
-                if out.is_empty() {
+                let first_line = text.lines().next();
+                if out.is_empty() && first_line.map_or(true, |l| l.trim_end() == "---") {
                     // sem front-matter, um `---` na primeira linha viraria front-matter
                     out.push_str(self.newline);
                 }
+                out.push_str(&text);
                 continue;
             }
-            let prev = order[pos - 1];
-            if prev + 1 == id {
+            let (prev, prev_edit) = &entries[pos - 1];
+            if prev + 1 == *id && edit.is_none() && prev_edit.is_none() {
                 if let Some(lead) = &slide.lead {
                     out.push_str(lead);
                 }
-                out.push_str(&slide.text);
+                out.push_str(&text);
                 continue;
             }
             // Sem linha em branco antes, `texto\n---` viraria um título setext.
             self.ensure_blank_line(&mut out);
-            if !slide.heading_start {
+            if !heading_start {
                 match &slide.lead {
                     Some(lead) if lead.ends_with('\n') => out.push_str(lead),
                     Some(lead) => {
@@ -292,10 +314,10 @@ impl Deck {
                     }
                 }
             }
-            out.push_str(&slide.text);
+            out.push_str(&text);
         }
-        if let Some(&last) = order.last() {
-            if last != n - 1 {
+        if let Some((last, edit)) = entries.last() {
+            if *last != n - 1 || edit.is_some() {
                 // mantém o final do arquivo (quebra de linha final ou não) como estava
                 let tail = &self.source[self.source.trim_end().len()..];
                 let keep = out.trim_end().len().max(self.head.len());
@@ -304,6 +326,34 @@ impl Deck {
             }
         }
         out
+    }
+
+    /// Texto de uma lâmina editada: o conteúdo novo com as linhas em branco que
+    /// cercavam o original e as quebras de linha no estilo do arquivo.
+    fn rewrap(&self, slide: &Slide, body: &str) -> String {
+        let original = slide.text.as_str();
+        let start = original.len() - original.trim_start().len();
+        let end = (start + original.trim().len()).max(start);
+        let (before, after) = if original.trim().is_empty() {
+            ("", original)
+        } else {
+            (&original[..start], &original[end..])
+        };
+        let mut body = body.trim().replace("\r\n", "\n");
+        if self.newline != "\n" {
+            body = body.replace('\n', self.newline);
+        }
+        let mut text = format!("{before}{body}{after}");
+        if !text.ends_with('\n') {
+            text.push_str(self.newline);
+        }
+        text
+    }
+
+    /// Número de lâminas que o arquivo montado com `entries` teria.
+    pub fn count(&self, entries: &[Entry]) -> usize {
+        let text = self.compose(entries);
+        scan(&text, self.head.len().min(text.len()), &self.divider).len()
     }
 
     fn ensure_blank_line(&self, out: &mut String) {
@@ -519,6 +569,15 @@ mod tests {
 
     const BASIC: &str = "---\nmarp: true\ntheme: default\n---\n\n# Um\n\ntexto\n\n---\n\n# Dois\n\n- a\n- b\n\n---\n\n# Três\n\nfim\n";
 
+    fn reorder(deck: &Deck, order: &[usize]) -> String {
+        let entries: Vec<Entry> = order.iter().map(|&id| (id, None)).collect();
+        deck.compose(&entries)
+    }
+
+    fn edit(id: usize, text: &str) -> Entry {
+        (id, Some(text.to_string()))
+    }
+
     fn texts(deck: &Deck) -> Vec<String> {
         deck.slides.iter().map(|s| s.text.trim().to_string()).collect()
     }
@@ -530,7 +589,7 @@ mod tests {
             .iter()
             .map(|&i| deck.slides[i].text.trim().to_string())
             .collect();
-        let out = deck.compose(order);
+        let out = reorder(&deck, order);
         let again = Deck::parse(out.clone());
         assert_eq!(texts(&again), expected, "ordem {order:?}\n{out}");
         assert_eq!(again.head, deck.head);
@@ -551,7 +610,7 @@ mod tests {
         for src in [BASIC, "# só uma", "", "a\r\n\r\n---\r\n\r\nb", "---\n---\n"] {
             let deck = Deck::parse(src.to_string());
             let order: Vec<usize> = (0..deck.slides.len()).collect();
-            assert_eq!(deck.compose(&order), src);
+            assert_eq!(reorder(&deck, &order), src);
         }
     }
 
@@ -575,7 +634,7 @@ mod tests {
         let src = "---\nmarp: true\n---\n# A\n---\núltima linha sem quebra";
         let deck = Deck::parse(src.to_string());
         assert_eq!(deck.slides.len(), 2);
-        let out = deck.compose(&[1, 0]);
+        let out = reorder(&deck, &[1, 0]);
         assert_eq!(out, "---\nmarp: true\n---\núltima linha sem quebra\n\n---\n# A");
         check_order(src, &[1, 0]);
     }
@@ -584,7 +643,7 @@ mod tests {
     fn neighbours_keep_their_original_bytes() {
         let deck = Deck::parse(BASIC.to_string());
         // 1 e 2 continuam vizinhas: o trecho entre elas não muda
-        let out = deck.compose(&[1, 2, 0]);
+        let out = reorder(&deck, &[1, 2, 0]);
         assert!(out.contains("- a\n- b\n\n---\n\n# Três\n\nfim\n"));
         assert!(out.ends_with("texto\n"));
     }
@@ -631,7 +690,7 @@ mod tests {
         let src = "---\r\nmarp: true\r\n---\r\n\r\n# A\r\n\r\n---\r\n\r\n# B\r\n\r\n---\r\n\r\nC";
         let deck = Deck::parse(src.to_string());
         assert_eq!(deck.slides.len(), 3);
-        let out = deck.compose(&[2, 0, 1]);
+        let out = reorder(&deck, &[2, 0, 1]);
         assert!(!out.replace("\r\n", "").contains('\n'), "{out:?}");
         check_order(src, &[2, 0, 1]);
     }
@@ -699,7 +758,57 @@ mod tests {
         check_order(BASIC, &[2]);
         check_order(BASIC, &[0, 0, 1, 2, 2]);
         let deck = Deck::parse(BASIC.to_string());
-        assert_eq!(deck.compose(&[]), deck.head);
+        assert_eq!(reorder(&deck, &[]), deck.head);
+    }
+
+    #[test]
+    fn edited_slide_keeps_surrounding_layout() {
+        let deck = Deck::parse(BASIC.to_string());
+        let out = deck.compose(&[(0, None), edit(1, "# Novo\n\ntexto novo\n\n"), (2, None)]);
+        assert_eq!(out, BASIC.replace("# Dois\n\n- a\n- b", "# Novo\n\ntexto novo"));
+        // editar para o mesmo texto não muda nada
+        let same = deck.compose(&[(0, None), edit(1, "# Dois\n\n- a\n- b"), (2, None)]);
+        assert_eq!(same, BASIC);
+    }
+
+    #[test]
+    fn edited_slide_can_move_split_and_end_the_file() {
+        let deck = Deck::parse(BASIC.to_string());
+        let out = deck.compose(&[(2, None), edit(0, "parágrafo"), edit(1, "A\n\n---\n\nB")]);
+        let again = Deck::parse(out.clone());
+        assert_eq!(texts(&again), ["# Três\n\nfim", "parágrafo", "A", "B"]);
+        assert!(out.ends_with("B\n") && !out.ends_with("B\n\n"));
+        assert_eq!(deck.count(&[(2, None), edit(0, "parágrafo")]), 2);
+    }
+
+    #[test]
+    fn edited_paragraph_before_separator_is_not_setext() {
+        let src = "# A\n---\n# B\n---\n# C";
+        let deck = Deck::parse(src.to_string());
+        let out = deck.compose(&[edit(0, "texto"), edit(1, ""), edit(2, "fim")]);
+        assert_eq!(texts(&Deck::parse(out.clone())), ["texto", "", "fim"]);
+        assert!(!out.ends_with('\n'));
+        // sem front-matter, a primeira lâmina não pode começar por `---`
+        let first = deck.compose(&[edit(0, "---\nx: 1\n---\ny"), (1, None), (2, None)]);
+        assert_eq!(Deck::parse(first).head, "");
+    }
+
+    #[test]
+    fn edited_slide_uses_file_line_endings() {
+        let deck = Deck::parse("a\r\n\r\n---\r\n\r\nb\r\n".to_string());
+        let out = deck.compose(&[(0, None), edit(1, "um\ndois")]);
+        assert_eq!(out, "a\r\n\r\n---\r\n\r\num\r\ndois\r\n");
+    }
+
+    #[test]
+    fn edited_heading_divider_slide_gets_separator_when_heading_is_removed() {
+        let src = "---\nheadingDivider: 1\n---\n# A\n\n# B\n\n# C\n";
+        let deck = Deck::parse(src.to_string());
+        let out = deck.compose(&[(0, None), edit(1, "sem título"), (2, None)]);
+        assert_eq!(texts(&Deck::parse(out)), ["# A", "sem título", "# C"]);
+        let out = deck.compose(&[(0, None), edit(1, "# Outro\n\ntexto"), (2, None)]);
+        assert_eq!(texts(&Deck::parse(out.clone())), ["# A", "# Outro\n\ntexto", "# C"]);
+        assert!(!out.contains("---\n# Outro"));
     }
 
     #[test]

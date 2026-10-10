@@ -1,7 +1,8 @@
 # marp-order
 
 Reorganize as lâminas de uma apresentação [Marp](https://marp.app) arrastando miniaturas
-em uma matriz — e o arquivo `.md` é reescrito na nova ordem.
+em uma matriz, edite o conteúdo de cada uma com pré-visualização ao vivo — e o arquivo
+`.md` é reescrito com o resultado.
 
 ![Matriz de lâminas do marp-order](docs/screenshot.png)
 
@@ -12,7 +13,10 @@ sem alterar o conteúdo das lâminas.
 
 - **Um binário só**, escrito em Rust; a interface roda no seu navegador, em `localhost`.
 - **Miniaturas reais**, renderizadas pelo marp-cli com o tema da sua apresentação.
-- **Não reformata nada**: cada lâmina é movida byte a byte; o front-matter fica onde está.
+- **Editor com pré-visualização ao vivo**: duplo clique abre o Markdown da lâmina e o
+  resultado é redesenhado enquanto você digita.
+- **Não reformata nada**: lâminas não editadas são movidas byte a byte; o front-matter
+  fica onde está.
 - **Seguro**: backup automático, gravação atômica e detecção de edição externa.
 
 ## Requisitos
@@ -20,10 +24,10 @@ sem alterar o conteúdo das lâminas.
 | Para | Precisa de |
 |---|---|
 | Compilar | [Rust](https://rustup.rs) 1.80 ou mais novo |
-| Miniaturas (opcional) | [marp-cli](https://github.com/marp-team/marp-cli) e Chrome, Chromium ou Edge |
+| Miniaturas e pré-visualização (opcional) | [marp-cli](https://github.com/marp-team/marp-cli) e Chrome, Chromium ou Edge |
 
 Sem o marp-cli o programa funciona do mesmo jeito, mostrando o texto de cada lâmina no
-lugar da miniatura. O navegador é aberto com `xdg-open` (Linux); em outros sistemas, abra
+lugar da miniatura; o editor abre, mas sem a pré-visualização. O navegador é aberto com `xdg-open` (Linux); em outros sistemas, abra
 manualmente o endereço mostrado no terminal.
 
 ## Instalação
@@ -62,12 +66,29 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Mover pelo teclado | `Alt+←` / `Alt+→`, `Alt+Home` / `Alt+End` |
 | Duplicar / remover | `Ctrl+D` / `Delete` |
 | Desfazer / refazer | `Ctrl+Z` / `Ctrl+Y` |
-| Ampliar e ver o Markdown | duplo clique |
+| Editar o conteúdo | duplo clique |
 | Descartar alterações | botão **Descartar** |
 | Salvar no arquivo | `Ctrl+S` |
 
 Cada cartão mostra a posição nova e, se a lâmina mudou de lugar, a posição que ela tem no
 arquivo (`era 8`).
+
+### Editar uma lâmina
+
+Duplo clique em um cartão abre o editor: o Markdown da lâmina à esquerda e, à direita, a
+lâmina renderizada pelo Marp com o tema, as imagens e as diretivas do deck. A
+pré-visualização é refeita a cada alteração (algumas centenas de milissegundos).
+
+| Ação | Como |
+|---|---|
+| Aplicar a edição | `Ctrl+Enter` ou **Aplicar** |
+| Aplicar e gravar o arquivo | `Ctrl+S` |
+| Cancelar | `Esc` ou **Cancelar** |
+
+Aplicar não grava o arquivo: a edição fica pendente, como uma reordenação, e pode ser
+desfeita com `Ctrl+Z`. O cartão ganha a etiqueta **editada**, e a miniatura dele é
+atualizada quando você salva. Escrever `---` dentro de uma lâmina a divide em duas; as
+novas lâminas aparecem na matriz depois de salvar.
 
 ### Opções
 
@@ -93,8 +114,8 @@ O comando do marp-cli também pode ser definido pela variável `MARP_ORDER_MARP_
 ## O que acontece com o seu arquivo
 
 - **Front-matter fixo.** O bloco YAML inicial nunca é movido.
-- **Lâminas intactas.** O texto de cada lâmina — incluindo notas do apresentador e
-  diretivas como `<!-- _class: lead -->` — é copiado byte a byte. Lâminas que continuam
+- **Lâminas intactas.** O texto de cada lâmina não editada — incluindo notas do
+  apresentador e diretivas como `<!-- _class: lead -->` — é copiado byte a byte. Lâminas que continuam
   vizinhas mantêm até o espaçamento entre elas, então o `git diff` mostra só o que mudou.
 - **Ida e volta exata.** Voltar à ordem original devolve o arquivo idêntico.
 - **Backup.** Antes da primeira gravação é criado `apresentacao.md.bak` (ou `.bak1`,
@@ -126,7 +147,12 @@ com ⚠ para você conferir.
   primeira lâmina do deck tem um comentário assim e é movida, o comentário muda de lâmina.
   O cartão é marcado com ⚠.
 - **Codificação.** O arquivo precisa estar em UTF-8.
-- **Só reordena.** Não há edição do conteúdo das lâminas; use o seu editor para isso.
+- **Histórico de desfazer.** Salvar edições de conteúdo relê o arquivo e reinicia o
+  histórico de desfazer/refazer. Salvar só reordenações preserva o histórico.
+- **Recursos da pré-visualização.** Imagens e fontes precisam estar na pasta do deck ou
+  abaixo dela; caminhos com `../` ou absolutos não aparecem no editor (as miniaturas e o
+  resultado final não são afetados).
+- **Front-matter.** O editor altera lâminas; o front-matter é editado no seu editor de texto.
 - **Uso local.** O servidor aceita apenas conexões de `127.0.0.1` e não tem autenticação;
   não foi feito para ser exposto na rede.
 

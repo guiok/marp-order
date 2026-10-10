@@ -1,4 +1,5 @@
 mod deck;
+mod preview;
 mod thumbs;
 
 use std::fs;
@@ -12,7 +13,8 @@ use std::time::SystemTime;
 use serde_json::{json, Value};
 use tiny_http::{Header, Method, Request, Response, Server};
 
-use deck::Deck;
+use deck::{Deck, Entry};
+use preview::Preview;
 
 const UI: &str = include_str!("ui.html");
 
@@ -59,6 +61,8 @@ pub struct App {
     pub thumb_version: u64,
     pub thumb_state: &'static str,
     pub thumb_msg: String,
+    /// Pré-visualização do editor; ausente quando não há marp-cli.
+    preview: Option<Preview>,
 }
 
 enum SaveError {
@@ -81,10 +85,7 @@ impl App {
         }
     }
 
-    fn save(&mut self, order: Vec<usize>, force: bool) -> Result<(), SaveError> {
-        if order.iter().any(|&id| id >= self.deck.slides.len()) {
-            return Err(SaveError::Other("lâmina desconhecida".into()));
-        }
+    fn save(&mut self, entries: Vec<Entry>, force: bool) -> Result<(), SaveError> {
         let changed = self.external_change();
         if changed && !force {
             return Err(SaveError::ExternalChange);
@@ -96,26 +97,67 @@ impl App {
                 .map_err(|e| SaveError::Other(format!("falha ao criar o backup: {e}")))?;
             self.last_backup = Some(backup);
         }
-        let content = self.deck.compose(&order).into_bytes();
-        write_atomic(&self.path, &content)
+        let content = self.deck.compose(&entries);
+        write_atomic(&self.path, content.as_bytes())
             .map_err(|e| SaveError::Other(format!("falha ao gravar: {e}")))?;
-        self.last_disk = content;
-        self.last_meta = file_signature(&self.path);
-        self.disk_order = order;
         self.save_seq += 1;
+        if entries.iter().any(|(_, edit)| edit.is_some()) {
+            // Uma edição pode criar ou fundir lâminas: o arquivo gravado vira a nova base.
+            self.adopt(Deck::parse(content), &entries);
+        } else {
+            self.last_disk = content.into_bytes();
+            self.last_meta = file_signature(&self.path);
+            self.disk_order = entries.into_iter().map(|(id, _)| id).collect();
+        }
         Ok(())
     }
 
     fn reload(&mut self) -> Result<(), String> {
-        let (bytes, deck) = load(&self.path)?;
-        self.has_thumb = vec![false; deck.slides.len()];
-        self.disk_order = (0..deck.slides.len()).collect();
-        self.deck = deck;
-        self.last_disk = bytes;
+        let deck = load(&self.path)?;
+        self.adopt(deck, &[]);
+        Ok(())
+    }
+
+    /// Troca o deck em memória pelo conteúdo que está no disco. `origin` diz de quais
+    /// lâminas antigas as novas vieram, para reaproveitar as miniaturas das intactas.
+    fn adopt(&mut self, deck: Deck, origin: &[Entry]) {
+        let count = deck.slides.len();
+        let mut has_thumb = vec![false; count];
+        if origin.len() == count {
+            let file = |name: String| self.thumb_dir.join(name);
+            // em duas etapas, porque os números novos e antigos se sobrepõem
+            for (new, (old, edit)) in origin.iter().enumerate() {
+                has_thumb[new] = edit.is_none()
+                    && self.has_thumb[*old]
+                    && fs::copy(file(format!("{old}.jpeg")), file(format!("new-{new}.jpeg"))).is_ok();
+            }
+            for (new, has) in has_thumb.iter_mut().enumerate() {
+                *has = *has
+                    && fs::rename(file(format!("new-{new}.jpeg")), file(format!("{new}.jpeg"))).is_ok();
+            }
+        }
+        self.has_thumb = has_thumb;
+        self.disk_order = (0..count).collect();
+        self.last_disk = deck.source.clone().into_bytes();
         self.last_meta = file_signature(&self.path);
+        self.deck = deck;
         self.generation += 1;
         self.thumb_version += 1;
-        Ok(())
+    }
+
+    /// Converte o rascunho para a pré-visualização e devolve a página da lâmina `index`.
+    fn preview(&mut self, entries: &[Entry], index: usize) -> Result<usize, String> {
+        let markdown = self.deck.compose(entries);
+        let page = match index.min(entries.len()) {
+            0 => 1,
+            index => self.deck.count(&entries[..index]) + 1,
+        };
+        let preview = self
+            .preview
+            .as_mut()
+            .ok_or("pré-visualização indisponível: marp-cli não encontrado")?;
+        preview.render(&self.path, &markdown)?;
+        Ok(page)
     }
 
     fn status_json(&mut self) -> Value {
@@ -170,11 +212,11 @@ impl App {
     }
 }
 
-fn load(path: &Path) -> Result<(Vec<u8>, Deck), String> {
+fn load(path: &Path) -> Result<Deck, String> {
     let bytes = fs::read(path).map_err(|e| format!("não foi possível ler {}: {e}", path.display()))?;
-    let text = String::from_utf8(bytes.clone())
+    let text = String::from_utf8(bytes)
         .map_err(|_| format!("{} não é um arquivo UTF-8 válido", path.display()))?;
-    Ok((bytes, Deck::parse(text)))
+    Ok(Deck::parse(text))
 }
 
 fn file_name(path: &Path) -> String {
@@ -278,26 +320,27 @@ fn run() -> Result<(), String> {
     // Caminho real: gravar por rename não pode trocar um link simbólico por um arquivo.
     let path = fs::canonicalize(&args.file)
         .map_err(|e| format!("não foi possível abrir {}: {e}", args.file.display()))?;
-    let (bytes, deck) = load(&path)?;
+    let deck = load(&path)?;
     let count = deck.slides.len();
 
     let thumb_dir = std::env::temp_dir().join(format!("marp-order-{}", std::process::id()));
-    let marp_cmd = if args.thumbs {
-        thumbs::resolve_cmd(args.marp_cmd.as_deref())
-    } else {
-        None
-    };
+    // o marp-cli serve às miniaturas e à pré-visualização do editor
+    let marp_cmd = thumbs::resolve_cmd(args.marp_cmd.as_deref());
     let (thumb_state, thumb_msg) = match (&marp_cmd, args.thumbs) {
-        (Some(_), _) => ("rendering", String::new()),
+        (_, false) => ("off", String::new()),
+        (Some(_), true) => ("rendering", String::new()),
         (None, true) => ("error", "marp-cli não encontrado (instale `marp` ou `npx`)".into()),
-        (None, false) => ("off", String::new()),
     };
+
+    let preview = marp_cmd.as_ref().map(|cmd| {
+        Preview::new(cmd.clone(), args.marp_extra.clone(), thumb_dir.join("preview"))
+    });
 
     let app = Arc::new(Mutex::new(App {
         last_meta: file_signature(&path),
         path: path.clone(),
+        last_disk: deck.source.clone().into_bytes(),
         deck,
-        last_disk: bytes,
         disk_order: (0..count).collect(),
         generation: 1,
         save_seq: 0,
@@ -307,9 +350,10 @@ fn run() -> Result<(), String> {
         thumb_version: 0,
         thumb_state,
         thumb_msg,
+        preview,
     }));
 
-    let render = marp_cmd.map(|cmd| {
+    let render = marp_cmd.filter(|_| args.thumbs).map(|cmd| {
         let config = thumbs::Config {
             cmd,
             extra: args.marp_extra,
@@ -362,6 +406,65 @@ fn header_value(request: &Request, name: &'static str) -> Option<String> {
         .map(|h| h.value.to_string())
 }
 
+/// Lê `[{"id": n, "text": "..."}]`; `text` só vem nas lâminas editadas.
+fn parse_entries(value: &Value, slide_count: usize) -> Option<Vec<Entry>> {
+    value
+        .as_array()?
+        .iter()
+        .map(|item| {
+            let id = item["id"].as_u64()? as usize;
+            (id < slide_count).then(|| (id, item["text"].as_str().map(String::from)))
+        })
+        .collect()
+}
+
+/// Arquivo da pasta do deck (ou abaixo dela) pedido pela pré-visualização.
+fn deck_asset(deck: &Path, url_path: &str) -> Option<(Vec<u8>, &'static str)> {
+    let root = deck.parent()?;
+    let file = fs::canonicalize(root.join(percent_decode(url_path))).ok()?;
+    if !file.starts_with(root) {
+        return None;
+    }
+    let extension = file.extension()?.to_str()?.to_ascii_lowercase();
+    let kind = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "svg" => "image/svg+xml",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "css" => "text/css",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        _ => return None,
+    };
+    Some((fs::read(file).ok()?, kind))
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok());
+        match (bytes[i], hex.and_then(|h| u8::from_str_radix(h, 16).ok())) {
+            (b'%', Some(byte)) => {
+                out.push(byte);
+                i += 3;
+            }
+            (byte, _) => {
+                out.push(byte);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, port: u16) {
     // Só o próprio navegador local fala com o servidor: barra DNS rebinding e POSTs de outros sites.
     let host = header_value(&request, "Host").unwrap_or_default();
@@ -408,25 +511,54 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                 None => respond_error(request, 404, "miniatura indisponível"),
             }
         }
-        (true, "/api/save") => {
+        (false, "/preview/slide.html") => {
+            let page = url
+                .split_once("page=")
+                .and_then(|(_, rest)| rest.split('&').next()?.parse().ok())
+                .unwrap_or(1);
+            match app.preview.as_ref().and_then(|p| p.page(page)) {
+                Some(html) => {
+                    let kind = Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap();
+                    // o HTML do modo --watch tenta recarregar a si mesmo por websocket
+                    let policy =
+                        Header::from_bytes("Content-Security-Policy", "connect-src 'none'").unwrap();
+                    let response = Response::from_string(html).with_header(kind).with_header(policy);
+                    let _ = request.respond(response);
+                }
+                None => respond_error(request, 404, "pré-visualização indisponível"),
+            }
+        }
+        (false, _) if route.starts_with("/preview/") => {
+            // imagens, fontes e CSS que o deck referencia por caminho relativo
+            match deck_asset(&app.path, &route["/preview/".len()..]) {
+                Some((bytes, kind)) => {
+                    let kind = Header::from_bytes("Content-Type", kind).unwrap();
+                    let _ = request.respond(Response::from_data(bytes).with_header(kind));
+                }
+                None => respond_error(request, 404, "arquivo não encontrado"),
+            }
+        }
+        (true, "/api/save") | (true, "/api/preview") => {
             let mut body = String::new();
-            if request.as_reader().take(4 << 20).read_to_string(&mut body).is_err() {
+            if request.as_reader().take(16 << 20).read_to_string(&mut body).is_err() {
                 return respond_error(request, 400, "corpo inválido");
             }
             let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
-            let order: Option<Vec<usize>> = parsed["order"].as_array().and_then(|items| {
-                items
-                    .iter()
-                    .map(|v| v.as_u64().map(|n| n as usize))
-                    .collect()
-            });
-            let (Some(order), Some(generation)) = (order, parsed["generation"].as_u64()) else {
+            let entries = parse_entries(&parsed["slides"], app.deck.slides.len());
+            let (Some(entries), Some(generation)) = (entries, parsed["generation"].as_u64()) else {
                 return respond_error(request, 400, "pedido inválido");
             };
             if generation != app.generation {
                 return respond_error(request, 409, "o arquivo foi recarregado; atualize a página");
             }
-            match app.save(order, parsed["force"].as_bool().unwrap_or(false)) {
+            if route == "/api/preview" {
+                let index = parsed["index"].as_u64().unwrap_or(0) as usize;
+                return match app.preview(&entries, index) {
+                    Ok(page) => respond_json(request, 200, json!({ "page": page })),
+                    Err(message) => respond_error(request, 503, &message),
+                };
+            }
+            match app.save(entries, parsed["force"].as_bool().unwrap_or(false)) {
                 Ok(()) => {
                     if let Some(tx) = render {
                         let _ = tx.send(());
