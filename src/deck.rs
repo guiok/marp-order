@@ -822,4 +822,54 @@ mod tests {
         );
         assert!(forward_directives("<!-- _class: lead -->\nnota: class: x").is_empty());
     }
+
+    /// Confere a divisão em lâminas contra o marp-cli de verdade. Fica fora do `cargo test`
+    /// comum porque precisa do `marp` no PATH: `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "needs marp-cli in PATH"]
+    fn slide_count_matches_marp_cli() {
+        use std::process::Command;
+        let fm = "---\nmarp: true\n---\n\n";
+        let hd = "---\nmarp: true\nheadingDivider: 2\n---\n\n";
+        let cases: Vec<String> = vec![
+            BASIC.to_string(),
+            format!("{fm}# A\n\n***\n\n# B\n\n___\n\n# C\n\n- - -\n\n# D\n"),
+            format!("{fm}# A\n\n```\n---\n```\n\n---\n\n<!--\n---\n-->\n\n# B\n"),
+            format!("{fm}Title\n---\n\ntext\n\n---\n\nend\n"),
+            format!("{fm}- item\n---\nB\n"),
+            format!("{fm}# heading\n---\nB\n"),
+            format!("{fm}<!-- _class: lead -->\n---\nB\n"),
+            format!("{fm}> quote\n---\nB\n"),
+            format!("{fm}- item\n\n  ---\n\n  more\n\n---\n\nB\n"),
+            format!("{fm}A\n\n    ---\n\nB\n"),
+            format!("{fm}<style>\nsection {{ color: red; }}\n---\n</style>\n\n# A\n\n---\n\n# B\n"),
+            format!("{fm}# A\n\n---\n---\n\n# B\n"),
+            "# A\n\n---\n\n# B\n".to_string(),
+            format!("{hd}# Cover\n\n## One\n\ntext\n\n### sub\n\n## Two\n\n---\n\n## Three\nend\n"),
+            format!("{hd}<!-- note -->\n\n## One\n\n## Two\n"),
+            format!("{hd}text before\n\n## A\n\n---\n\n<!-- c -->\n## B\n"),
+            format!("{hd}intro\n\nSetext\n------\n\nmore\n\nTop\n===\n"),
+            "---\nmarp: true\n---\n\n<!-- headingDivider: 1 -->\n\n# A\n\ntext\n\n# B\n\n## not a divider\n".to_string(),
+        ];
+        let dir = std::env::temp_dir().join(format!("marp-order-parity-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (n, source) in cases.iter().enumerate() {
+            let input = dir.join(format!("case{n}.md"));
+            let output = dir.join(format!("case{n}.html"));
+            std::fs::write(&input, source).unwrap();
+            let status = Command::new("marp")
+                .arg("--no-stdin")
+                .arg(&input)
+                .arg("-o")
+                .arg(&output)
+                .output()
+                .expect("marp-cli not found");
+            assert!(status.status.success(), "marp failed on case {n}");
+            let html = std::fs::read_to_string(&output).unwrap();
+            let marp = html.matches("<section ").count();
+            let ours = Deck::parse(source.clone()).slides.len();
+            assert_eq!(ours, marp, "case {n}:\n{source}");
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

@@ -71,12 +71,16 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Select several | `Ctrl`+click, `Shift`+click, `Ctrl+A` |
 | Move with the keyboard | `Alt+←` / `Alt+→`, `Alt+Home` / `Alt+End` |
 | Duplicate / remove | `Ctrl+D` / `Delete` |
+| Copy / cut / paste, also between tabs | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
+| Copy to another file | drag the cards onto its tab |
+| Find slides by text | `Ctrl+F`, then `Enter` for the next match |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` |
 | Edit the content | double-click |
 | Discard changes | **Discard** button |
 | Save to the file | `Ctrl+S` |
 | Reload the file from disk | `Ctrl+R` |
 | Open another file | `Ctrl+O` or **+ Open** |
+| Edit the front matter | **Front matter** button |
 | Compare with another open file | **Compare…** button |
 
 Each card shows its new position and, if the slide has moved, the position it has in the
@@ -84,9 +88,13 @@ file (`was 8`).
 
 ### Editing a slide
 
-Double-clicking a card opens the editor: the slide's Markdown on the left and, on the
-right, the slide rendered by Marp with the deck's theme, images and directives. The
-preview is redone on every change (a few hundred milliseconds).
+Double-clicking a card opens the editor: the slide's Markdown on the left, with syntax
+colouring, and on the right the slide rendered by Marp with the deck's theme, images and
+directives. The preview is redone on every change (a few hundred milliseconds).
+
+Speaker notes (HTML comments that are not Marp directives) get their own box below the
+text. If you change the text or the notes, the notes are written back as one comment at
+the end of the slide.
 
 | Action | How |
 |---|---|
@@ -96,15 +104,21 @@ preview is redone on every change (a few hundred milliseconds).
 
 Applying does not write the file: the edit stays pending, like a reordering, and can be
 undone with `Ctrl+Z`. The card gets an **edited** tag, and its thumbnail is
-refreshed when you save. Writing `---` inside a slide splits it in two; the new slides
+re-rendered in the background a few seconds later. Writing `---` inside a slide splits it in two; the new slides
 show up in the grid after saving.
+
+The **Front matter** button opens the same editor on the YAML block at the top of the
+file (theme, `paginate`, `headingDivider`…), with the first slide as preview. It applies
+to the whole file, so it is written to disk as soon as you save it there, and it is only
+available when the tab has no pending changes.
 
 ### Several files
 
 Each file lives in a tab. **+ Open** (`Ctrl+O`) shows the recently opened files and a
 folder browser limited to `.md` and `.markdown` files; **×** closes a tab. Unsaved
 changes, the undo history and the selection are kept per tab while you switch, and a
-dot on the tab marks unsaved changes.
+dot on the tab marks unsaved changes. Slides can be copied between tabs with
+`Ctrl+C`/`Ctrl+V` or by dragging them onto another tab, where they are added at the end.
 
 The list of open files is remembered: running `marp-order` with no file reopens the tabs
 of the last session. Recent files and the session are stored in
@@ -119,15 +133,19 @@ those of another open file (as saved on disk) and marks each difference:
 
 | Difference | What you can do |
 |---|---|
-| **different** – same title, other content | **← Use other** replaces your slide with the other one; *Show Markdown* shows both texts |
+| **different** – same title or mostly the same text | **← Use other** replaces your slide with the other one; *Show what differs* marks the changed lines |
 | **only in the other** | **← Add** copies the slide into your file at that position |
 | **only here** | **Remove** deletes it from your file |
 
 **Take all from other** applies everything at once. Each action is a pending change in
 the current tab, exactly like a manual edit: it can be undone, and nothing is written
-until you save. The other file is never modified. Only slides are compared; the front
-matter (theme, global directives) is not merged, and images referenced by a copied slide
-are not copied.
+until you save. The other file is never modified. A difference in the front matter
+(theme, global directives) is shown but not merged: edit it with the **Front matter**
+button.
+
+When a slide comes from a file in another folder — through the comparison, pasting or
+dragging — relative paths to images that exist there are rewritten (`img/a.png` becomes
+`../other/img/a.png`), so the slide keeps pointing to the same files. Nothing is copied.
 
 ### Options
 
@@ -158,12 +176,14 @@ The marp-cli command can also be set with the `MARP_ORDER_MARP_CMD` environment 
   remain neighbours keep even the spacing between them, so `git diff` shows only what
   changed.
 - **Exact round trip.** Going back to the original order gives you the identical file.
-- **Backup.** Before the first write, `presentation.md.bak` is created (or `.bak1`,
-  `.bak2`… if it already exists).
+- **Backup.** Before the first write of each run, the file is copied to
+  `.marp-order-backups/presentation.md.<date>.bak` next to it. The ten most recent
+  copies of each file are kept.
 - **Atomic write.** The content goes to a temporary file that is then renamed, so a crash
   halfway through does not leave you with half a deck.
 - **External edits.** If the file changes in your editor while marp-order is open, saving
-  is blocked until you choose between reloading and overwriting.
+  is blocked until you choose between reloading and overwriting. The same happens when
+  the file was saved from another marp-order window.
 - **Cross-check with Marp.** Thumbnails are re-rendered on every save; if Marp sees a
   different number of slides than marp-order does, a warning is shown.
 
@@ -188,12 +208,9 @@ marks the card with ⚠ so you can check.
   first slide of the deck has such a comment and is moved, the comment changes slides.
   The card is marked with ⚠.
 - **Encoding.** The file must be UTF-8.
-- **Undo history.** Saving content edits re-reads the file and resets the undo/redo
-  history. Saving only reorderings keeps it.
 - **Preview assets.** Images and fonts must be in the deck's folder or below it; paths
   with `../` or absolute paths do not show up in the editor (thumbnails and the final
   output are not affected).
-- **Front matter.** The editor changes slides; edit the front matter in your text editor.
 - **Local use.** The server only accepts connections from `127.0.0.1` and has no
   authentication; it is not meant to be exposed on a network.
 - **Preview port.** While the editor preview is in use, marp-cli's watch mode opens its
@@ -202,7 +219,7 @@ marks the card with ⚠ so you can check.
 ## Development
 
 ```bash
-make test     # parser and writer tests
+make test     # parser, server and interface tests
 make build    # release binary in target/release/
 make                          # run it, reopening the last session
 make abrir DECK=presentation.md
@@ -210,7 +227,9 @@ make abrir DECK=presentation.md
 
 The code structure and the slide-splitting rules are described in
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md) (in Portuguese). Contributions are welcome:
-when changing the parser, add a test to `src/deck.rs` and check the case against marp-cli.
+when changing the parser, add a test to `src/deck.rs` and a case to
+`slide_count_matches_marp_cli`, which compares the slide count with the real marp-cli
+(`cargo test -- --ignored`). The same checks run on every push in GitHub Actions.
 
 ## License
 

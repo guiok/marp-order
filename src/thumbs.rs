@@ -9,6 +9,21 @@ use std::thread;
 
 use crate::App;
 
+/// Pedido ao gerador de miniaturas.
+pub enum Job {
+    /// Renderizar o arquivo aberto de número `0`, como está no disco.
+    Disk(u64),
+    /// Renderizar um rascunho (ordem e edições ainda não salvas) e guardar as imagens das
+    /// lâminas pedidas em `wanted`: (posição a partir de 0, chave do texto).
+    Draft {
+        doc: u64,
+        generation: u64,
+        markdown: String,
+        total: usize,
+        wanted: Vec<(usize, String)>,
+    },
+}
+
 pub struct Config {
     /// Comando do marp-cli já dividido em programa + argumentos.
     pub cmd: Vec<String>,
@@ -43,28 +58,37 @@ fn in_path(program: &str) -> bool {
 
 /// Inicia o gerador. Cada mensagem traz o número de um arquivo aberto e pede uma nova
 /// renderização do que está em disco.
-pub fn spawn(app: Arc<Mutex<App>>, config: Config) -> Sender<u64> {
+pub fn spawn(app: Arc<Mutex<App>>, config: Config) -> Sender<Job> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || worker(app, config, rx));
     tx
 }
 
-fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<u64>) {
-    let mut pending: Vec<u64> = Vec::new();
+fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
+    let mut pending: Vec<Job> = Vec::new();
     loop {
         if pending.is_empty() {
             match rx.recv() {
-                Ok(id) => pending.push(id),
+                Ok(job) => pending.push(job),
                 Err(_) => return,
             }
         }
-        // pedidos acumulados para o mesmo arquivo viram um só
-        for id in rx.try_iter() {
-            if !pending.contains(&id) {
-                pending.push(id);
-            }
+        // pedidos acumulados para o mesmo arquivo viram um só; do rascunho vale o último
+        for job in rx.try_iter() {
+            pending.retain(|old| match (old, &job) {
+                (Job::Disk(a), Job::Disk(b)) => a != b,
+                (Job::Draft { doc: a, .. }, Job::Draft { doc: b, .. }) => a != b,
+                _ => true,
+            });
+            pending.push(job);
         }
-        let id = pending.remove(0);
+        let id = match pending.remove(0) {
+            Job::Disk(id) => id,
+            Job::Draft { doc, generation, markdown, total, wanted } => {
+                draft(&app, &config, doc, generation, &markdown, total, &wanted);
+                continue;
+            }
+        };
         loop {
             let job = {
                 let mut app = app.lock().unwrap();
@@ -127,6 +151,50 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<u64>) {
             break;
         }
     }
+}
+
+/// Miniaturas de lâminas ainda não salvas. O rascunho é gravado ao lado do deck, para as
+/// imagens de caminho relativo aparecerem, e apagado em seguida.
+fn draft(
+    app: &Mutex<App>,
+    config: &Config,
+    id: u64,
+    generation: u64,
+    markdown: &str,
+    total: usize,
+    wanted: &[(usize, String)],
+) {
+    let Some((path, dir)) = app
+        .lock()
+        .unwrap()
+        .doc(id)
+        .filter(|doc| doc.generation == generation)
+        .map(|doc| (doc.path.clone(), doc.thumb_dir.clone()))
+    else {
+        return;
+    };
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let file = path.with_file_name(format!(".{name}.marp-order.draft.md"));
+    if fs::write(&file, markdown).is_err() {
+        return;
+    }
+    let work = dir.join("draft");
+    let images = render(config, &file, &work);
+    let _ = fs::remove_file(&file);
+
+    let mut app = app.lock().unwrap();
+    if let (Ok(images), Some(doc)) = (images, app.doc(id)) {
+        // se o Marp dividir o rascunho de outro jeito, as posições não são confiáveis
+        if doc.generation == generation && images.len() == total {
+            for (at, key) in wanted {
+                let target = dir.join(format!("d-{key}.jpeg"));
+                if fs::rename(&images[*at], &target).is_ok() && !doc.drafts.contains(key) {
+                    doc.drafts.push(key.clone());
+                }
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(&work);
 }
 
 /// Renderiza o deck e devolve as imagens na ordem das lâminas.

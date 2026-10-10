@@ -16,6 +16,7 @@ apresentacao.md ──► deck.rs (parse) ──► main.rs (estado + HTTP) ◄�
 | `src/deck.rs` | Divide o arquivo em cabeçalho + lâminas e o remonta em outra ordem. Sem E/S. |
 | `src/main.rs` | Linha de comando, estado, rotas HTTP, backup e gravação atômica. |
 | `src/thumbs.rs` | Thread que chama o marp-cli e associa cada imagem a uma lâmina. |
+| `src/links.rs` | Reescreve caminhos relativos de lâminas copiadas entre pastas. |
 | `src/preview.rs` | Pré-visualização ao vivo do editor, com um `marp --watch` persistente. |
 | `src/ui.html` | Interface (HTML, CSS e JavaScript puros), embutida no binário. |
 
@@ -38,10 +39,16 @@ As lâminas são identificadas pelo índice que tinham quando o arquivo foi lido
 envia a lista de posições desejada, cada uma com o índice da lâmina e, se ela foi editada,
 o texto novo (`Entry = (usize, Option<String>)`).
 
-Salvar só uma reordenação não muda os índices, o que permite desfazer mesmo depois de
-salvar. Salvar com edições é diferente: como o texto novo pode criar ou fundir lâminas, o
-arquivo gravado é relido e vira a nova base (`App::adopt`), com índices renumerados. As
-miniaturas das lâminas intactas são reaproveitadas.
+Salvar só uma reordenação não muda os índices. Salvar com edições é diferente: como o
+texto novo pode criar ou fundir lâminas, o arquivo gravado é relido e vira a nova base
+(`Doc::adopt`), com índices renumerados. As miniaturas das lâminas intactas são
+reaproveitadas, e o navegador traduz o histórico de desfazer para a numeração nova
+(`makeRemap`): cada item antigo vira a lâmina nova de mesma origem ou de mesmo texto, ou
+uma entrada com texto próprio.
+
+Cada gravação incrementa `save_seq`. O navegador manda o valor que conhecia; se outra
+janela gravou no meio, o servidor responde 409 (`stale`) e a interface pergunta antes de
+sobrescrever.
 
 ## Vários arquivos
 
@@ -56,8 +63,10 @@ os que estão abertos agora; sem argumentos, o programa reabre os da sessão.
 
 A comparação é feita no navegador: as lâminas da aba atual (com as alterações pendentes)
 são alinhadas com as do outro arquivo pela maior subsequência comum dos textos; nas
-lacunas, lâminas de mesmo título formam um par "diferente". Uma lâmina copiada do outro
-arquivo entra na lista como uma entrada com texto novo, igual a uma edição.
+lacunas, lâminas de mesmo título ou com pelo menos metade das linhas em comum formam um
+par "diferente". Uma lâmina copiada do outro arquivo entra na lista como uma entrada com
+texto novo, igual a uma edição, depois de passar por `POST /api/import`, que acerta os
+caminhos relativos de imagens quando os dois arquivos estão em pastas diferentes.
 
 ## Divisão das lâminas
 
@@ -122,6 +131,11 @@ divisão pode estar errada — é a rede de segurança contra casos que o parser
 Uma renderização é disparada ao abrir, ao recarregar e depois de cada salvamento. Se o
 arquivo mudar durante a renderização, o resultado é descartado e ela é refeita.
 
+Lâminas editadas ou acrescentadas ainda não estão no disco. Para elas a interface pede
+`POST /api/draft` com o estado pendente; o servidor grava o rascunho em um arquivo oculto
+ao lado do deck (`.<nome>.marp-order.draft.md`, apagado em seguida), renderiza e guarda
+só as imagens pedidas, identificadas pela chave do texto (`d-<chave>.jpeg`).
+
 ## Pré-visualização do editor
 
 Converter o deck inteiro a cada tecla com uma execução avulsa do marp-cli leva segundos,
@@ -168,6 +182,9 @@ O marp-cli em modo `--watch` abre um servidor websocket próprio na porta 37717.
 | `POST /api/browse` | `{dir}` — pastas e arquivos Markdown, para o diálogo de abrir |
 | `POST /api/save` | `{doc, generation, slides: [{id, text?}], force}` — grava ordem e edições |
 | `POST /api/preview` | `{doc, generation, slides, index}` — converte o rascunho; devolve a página |
+| `POST /api/draft` | `{doc, generation, slides}` — pede miniaturas das lâminas não salvas |
+| `POST /api/head` | `{doc, head, force}` — grava um front-matter novo |
+| `POST /api/import` | `{from, to, texts}` — acerta caminhos relativos de lâminas copiadas |
 | `POST /api/reload` | `{doc}` — relê o arquivo do disco |
 | `POST /api/rethumb` | `{doc}` — refaz as miniaturas |
 
@@ -177,14 +194,15 @@ outra página aberta no navegador dispare uma gravação.
 
 ## Testes
 
-`cargo test` roda os testes de `deck.rs`. O principal padrão é o de ida e volta: remontar
-o deck em uma ordem, reler o resultado e conferir que as lâminas saíram na ordem pedida.
+`cargo test` roda os testes do parser (`deck.rs`), do servidor (`main.rs`, incluindo um
+teste que sobe o servidor HTTP e faz pedidos de verdade) e de `links.rs`. No parser, o
+principal padrão é o de ida e volta: remontar o deck em uma ordem, reler o resultado e
+conferir que as lâminas saíram na ordem pedida.
 
-As regras de divisão foram conferidas contra o marp-cli 4.5.1, comparando o número de
-`<section>` gerado pelo Marp com o número de lâminas do parser em casos-limite. Ao alterar
-o parser, repita essa conferência para o caso novo:
+A lógica da interface que não depende do navegador (alinhamento da comparação, diferença
+por linha, notas do apresentador, realce, tradução do histórico) fica em um bloco
+`<pure>` de `ui.html` e é testada com `node --test tests/ui_logic.test.js`.
 
-```bash
-marp --no-stdin caso.md -o caso.html && grep -o '<section[^>]*id="[0-9]*"' caso.html | wc -l
-marp-order --no-open --no-thumbs caso.md    # imprime o número de lâminas; Ctrl+C para sair
-```
+`cargo test -- --ignored` roda `slide_count_matches_marp_cli`, que compara o número de
+lâminas do parser com o do marp-cli em casos-limite. O GitHub Actions
+(`.github/workflows/ci.yml`) roda tudo isso, mais o clippy, a cada push.

@@ -73,12 +73,16 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Selecionar várias | `Ctrl`+clique, `Shift`+clique, `Ctrl+A` |
 | Mover pelo teclado | `Alt+←` / `Alt+→`, `Alt+Home` / `Alt+End` |
 | Duplicar / remover | `Ctrl+D` / `Delete` |
+| Copiar / recortar / colar, também entre abas | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
+| Copiar para outro arquivo | arrastar os cartões para a aba dele |
+| Buscar lâminas por texto | `Ctrl+F`, depois `Enter` para o próximo resultado |
 | Desfazer / refazer | `Ctrl+Z` / `Ctrl+Y` |
 | Editar o conteúdo | duplo clique |
 | Descartar alterações | botão **Discard** |
 | Salvar no arquivo | `Ctrl+S` |
 | Recarregar o arquivo do disco | `Ctrl+R` |
 | Abrir outro arquivo | `Ctrl+O` ou **+ Open** |
+| Editar o front-matter | botão **Front matter** |
 | Comparar com outro arquivo aberto | botão **Compare…** |
 
 Cada cartão mostra a posição nova e, se a lâmina mudou de lugar, a posição que ela tem no
@@ -86,9 +90,13 @@ arquivo (`was 8`).
 
 ### Editar uma lâmina
 
-Duplo clique em um cartão abre o editor: o Markdown da lâmina à esquerda e, à direita, a
-lâmina renderizada pelo Marp com o tema, as imagens e as diretivas do deck. A
-pré-visualização é refeita a cada alteração (algumas centenas de milissegundos).
+Duplo clique em um cartão abre o editor: o Markdown da lâmina à esquerda, com realce de
+sintaxe, e à direita a lâmina renderizada pelo Marp com o tema, as imagens e as diretivas
+do deck. A pré-visualização é refeita a cada alteração (algumas centenas de milissegundos).
+
+As notas do apresentador (comentários HTML que não são diretivas do Marp) ficam em uma
+caixa própria abaixo do texto. Se você alterar o texto ou as notas, elas são regravadas
+como um único comentário no fim da lâmina.
 
 | Ação | Como |
 |---|---|
@@ -98,15 +106,22 @@ pré-visualização é refeita a cada alteração (algumas centenas de milissegu
 
 Aplicar não grava o arquivo: a edição fica pendente, como uma reordenação, e pode ser
 desfeita com `Ctrl+Z`. O cartão ganha a etiqueta **edited**, e a miniatura dele é
-atualizada quando você salva. Escrever `---` dentro de uma lâmina a divide em duas; as
+refeita em segundo plano alguns segundos depois. Escrever `---` dentro de uma lâmina a divide em duas; as
 novas lâminas aparecem na matriz depois de salvar.
+
+O botão **Front matter** abre o mesmo editor no bloco YAML do início do arquivo (tema,
+`paginate`, `headingDivider`…), com a primeira lâmina como pré-visualização. Ele vale
+para o arquivo todo, então é gravado no disco assim que você salva ali, e só fica
+disponível quando a aba não tem alterações pendentes.
 
 ### Vários arquivos
 
 Cada arquivo fica em uma aba. **+ Open** (`Ctrl+O`) mostra os arquivos abertos
 recentemente e um navegador de pastas restrito a `.md` e `.markdown`; o **×** fecha a
 aba. As alterações não salvas, o histórico de desfazer e a seleção são mantidos por aba
-enquanto você alterna, e um ponto na aba indica alterações não salvas.
+enquanto você alterna, e um ponto na aba indica alterações não salvas. Lâminas podem ser
+copiadas entre abas com `Ctrl+C`/`Ctrl+V` ou arrastando-as para outra aba, onde entram
+no fim.
 
 A lista de arquivos abertos é lembrada: rodar `marp-order` sem arquivo reabre as abas da
 última sessão. Os recentes e a sessão ficam em `~/.config/marp-order/` (ou
@@ -121,15 +136,19 @@ outro arquivo aberto (como está salvo no disco) e marca cada diferença:
 
 | Diferença | O que dá para fazer |
 |---|---|
-| **different** – mesmo título, conteúdo diferente | **← Use other** troca a sua lâmina pela do outro; *Show Markdown* mostra os dois textos |
+| **different** – mesmo título ou texto quase igual | **← Use other** troca a sua lâmina pela do outro; *Show what differs* marca as linhas alteradas |
 | **only in the other** | **← Add** copia a lâmina para o seu arquivo, naquela posição |
 | **only here** | **Remove** apaga a lâmina do seu arquivo |
 
 **Take all from other** aplica tudo de uma vez. Cada ação vira uma alteração pendente na
 aba atual, como uma edição manual: pode ser desfeita, e nada é gravado até você salvar. O
-outro arquivo nunca é modificado. Só as lâminas são comparadas; o front-matter (tema,
-diretivas globais) não é mesclado, e as imagens referenciadas por uma lâmina copiada não
-são copiadas.
+outro arquivo nunca é modificado. Uma diferença no front-matter (tema, diretivas
+globais) é mostrada, mas não mesclada: edite-o com o botão **Front matter**.
+
+Quando uma lâmina vem de um arquivo em outra pasta — pela comparação, colando ou
+arrastando — os caminhos relativos de imagens que existem lá são reescritos (`img/a.png`
+vira `../outra/img/a.png`), para a lâmina continuar apontando para os mesmos arquivos.
+Nada é copiado.
 
 ### Opções
 
@@ -159,12 +178,14 @@ O comando do marp-cli também pode ser definido pela variável `MARP_ORDER_MARP_
   apresentador e diretivas como `<!-- _class: lead -->` — é copiado byte a byte. Lâminas que continuam
   vizinhas mantêm até o espaçamento entre elas, então o `git diff` mostra só o que mudou.
 - **Ida e volta exata.** Voltar à ordem original devolve o arquivo idêntico.
-- **Backup.** Antes da primeira gravação é criado `apresentacao.md.bak` (ou `.bak1`,
-  `.bak2`… se já existir).
+- **Backup.** Antes da primeira gravação de cada execução, o arquivo é copiado para
+  `.marp-order-backups/apresentacao.md.<data>.bak`, ao lado dele. Ficam guardadas as dez
+  cópias mais recentes de cada arquivo.
 - **Gravação atômica.** O conteúdo vai para um arquivo temporário e é renomeado, de modo
   que uma queda no meio não deixa o deck pela metade.
 - **Edição externa.** Se o arquivo mudar no seu editor enquanto o marp-order está aberto,
-  o salvamento é bloqueado até você escolher entre recarregar ou sobrescrever.
+  o salvamento é bloqueado até você escolher entre recarregar ou sobrescrever. O mesmo
+  acontece quando o arquivo foi salvo por outra janela do marp-order.
 - **Conferência com o Marp.** As miniaturas são refeitas a cada salvamento; se o Marp
   enxergar um número de lâminas diferente do marp-order, aparece um alerta.
 
@@ -188,19 +209,16 @@ com ⚠ para você conferir.
   primeira lâmina do deck tem um comentário assim e é movida, o comentário muda de lâmina.
   O cartão é marcado com ⚠.
 - **Codificação.** O arquivo precisa estar em UTF-8.
-- **Histórico de desfazer.** Salvar edições de conteúdo relê o arquivo e reinicia o
-  histórico de desfazer/refazer. Salvar só reordenações preserva o histórico.
 - **Recursos da pré-visualização.** Imagens e fontes precisam estar na pasta do deck ou
   abaixo dela; caminhos com `../` ou absolutos não aparecem no editor (as miniaturas e o
   resultado final não são afetados).
-- **Front-matter.** O editor altera lâminas; o front-matter é editado no seu editor de texto.
 - **Uso local.** O servidor aceita apenas conexões de `127.0.0.1` e não tem autenticação;
   não foi feito para ser exposto na rede.
 
 ## Desenvolvimento
 
 ```bash
-make test     # testes do parser e do writer
+make test     # testes do parser, do servidor e da interface
 make build    # binário de release em target/release/
 make                          # executa, reabrindo a última sessão
 make abrir DECK=apresentacao.md
@@ -208,7 +226,9 @@ make abrir DECK=apresentacao.md
 
 A estrutura do código e as regras de divisão de lâminas estão descritas em
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md). Contribuições são bem-vindas: ao mexer no
-parser, acrescente um teste em `src/deck.rs` e confira o caso contra o marp-cli.
+parser, acrescente um teste em `src/deck.rs` e um caso em `slide_count_matches_marp_cli`,
+que compara o número de lâminas com o marp-cli de verdade (`cargo test -- --ignored`).
+As mesmas verificações rodam a cada push no GitHub Actions.
 
 ## Licença
 

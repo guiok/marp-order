@@ -1,4 +1,6 @@
 /target
 *.bak
 *.bak[0-9]*
+.marp-order-backups/
 .*.marp-order.tmp
+.*.marp-order.draft.md

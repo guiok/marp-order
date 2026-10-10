@@ -58,7 +58,12 @@
           overflow: hidden; cursor: grab; display: flex; flex-direction: column; }
   .card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .card.dragging { opacity: .35; }
-  .card img { display: block; width: 100%; height: auto; background: #fff; pointer-events: none; }
+  .card.dim { opacity: .28; }
+  .tab.drop { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  #find { font: inherit; width: 15ch; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px;
+          background: var(--bg); color: var(--text); }
+  .card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #fff;
+              pointer-events: none; }
   .card .text { aspect-ratio: 16 / 9; padding: 10px 12px; overflow: hidden; white-space: pre-wrap;
                 font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
   .card footer { display: flex; align-items: baseline; gap: 6px; padding: 6px 8px;
@@ -87,9 +92,25 @@
   .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 14px;
            border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
   @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
-  #edtext { margin: 12px 0; min-height: 62vh; resize: vertical; padding: 10px; border-radius: 6px;
-            border: 1px solid var(--line); background: var(--bg); color: var(--text); tab-size: 2;
-            font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  .edside { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; min-width: 0; }
+  .edwrap { position: relative; flex: 1; display: flex; }
+  #edtext, #edhl, #ednotes { margin: 0; padding: 10px; border-radius: 6px; border: 1px solid var(--line);
+            tab-size: 2; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+            white-space: pre-wrap; overflow-wrap: break-word; }
+  /* o texto visível é o do <pre> colorido por baixo; a área de texto fica transparente por cima */
+  #edhl { position: absolute; inset: 0; overflow-y: scroll; pointer-events: none;
+          background: var(--bg); color: var(--text); }
+  #edtext { position: relative; flex: 1; min-height: 50vh; resize: vertical; overflow-y: scroll;
+            background: transparent; color: transparent; caret-color: var(--text); }
+  #edtext::selection { background: var(--accent-soft); }
+  #ednotes { min-height: 9vh; resize: vertical; background: var(--bg); color: var(--text); }
+  .edside label { font-size: 12px; color: var(--muted); }
+  .hl-hd { color: var(--accent); }
+  .hl-cm { color: var(--muted); font-style: italic; }
+  .hl-code { color: var(--warn); }
+  .hl-mk, .hl-hr { color: var(--danger); }
+  .hl-lk { color: var(--accent); text-decoration: underline; }
+  .head #ednotes, .head .edside label { display: none; }
   #edview { position: relative; margin: 12px 0; align-self: start; aspect-ratio: 16 / 9;
             border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
   #edview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
@@ -126,9 +147,14 @@
                 font: 10px/1.35 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
   .mini footer { display: flex; gap: 6px; padding: 4px 8px; border-top: 1px solid var(--line); font-size: 12px; }
   .dfrow details { grid-column: 1 / -1; font-size: 12px; }
-  .dftext { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
-  .dftext pre { margin: 0; padding: 8px; border-radius: 4px; background: var(--panel); white-space: pre-wrap;
-                font: 11px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+  .dfdiff { margin-top: 6px; padding: 8px; border-radius: 4px; background: var(--panel);
+            font: 11px/1.45 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; }
+  .dfdiff div { padding: 0 4px; min-height: 1.45em; }
+  .dfdiff .del { background: var(--danger-soft); }
+  .dfdiff .add { background: var(--accent-soft); }
+  .dfdiff .del::before { content: '− '; }
+  .dfdiff .add::before { content: '+ '; }
+  .dfrow.head { grid-template-columns: 1fr; background: var(--warn-soft); font-size: 12px; }
   kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--panel); }
 </style>
 </head>
@@ -137,18 +163,20 @@
 <nav id="tabs"><button id="open" title="Open a file (Ctrl+O)">+ Open</button></nav>
 <header>
   <span id="info"></span>
+  <input id="find" type="search" placeholder="Find…" title="Find slides by text (Ctrl+F)" aria-label="Find slides">
   <label class="size">Size <input id="size" type="range" min="140" max="520" step="20" value="260"></label>
   <button id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
   <button id="redo" title="Redo (Ctrl+Y)">↷ Redo</button>
   <button id="dup" title="Duplicate selected (Ctrl+D)">Duplicate</button>
   <button id="del" title="Remove selected (Delete)">Remove</button>
+  <button id="fm" title="Edit the front matter (theme and global settings)">Front matter</button>
   <button id="compare" title="Compare with another open file and merge slides">Compare…</button>
   <button id="discard" title="Go back to what is saved in the file">Discard</button>
   <button id="save" class="primary" title="Write the changes to the file (Ctrl+S)">Save</button>
 </header>
 
 <div id="external" class="banner warn" hidden>
-  <span>The file was changed outside marp-order.</span>
+  <span></span>
   <button id="reload" title="Reload from disk (Ctrl+R)">Reload from disk (Ctrl+R)</button>
 </div>
 <div id="mismatch" class="banner danger" hidden><span></span></div>
@@ -163,18 +191,26 @@
 <p class="help">
   Drag to reorder · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click selects several ·
   <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> moves the selection · double-click edits ·
-  <kbd>Ctrl</kbd>+<kbd>R</kbd> reloads the file from disk · <kbd>Ctrl</kbd>+<kbd>O</kbd> opens another file ·
+  <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copies, cuts and pastes slides, also between tabs (or drag them onto a tab) ·
+  <kbd>Ctrl</kbd>+<kbd>F</kbd> finds · <kbd>Ctrl</kbd>+<kbd>R</kbd> reloads the file from disk · <kbd>Ctrl</kbd>+<kbd>O</kbd> opens another file ·
   <span class="flag">⚠</span> marks a slide whose effect depends on its position (hover to see why).
 </p>
 
 <dialog id="editor">
   <div class="bar"><strong id="edtitle"></strong><span id="edstatus" class="grow"></span></div>
   <div class="panes">
-    <textarea id="edtext" spellcheck="false" aria-label="Slide Markdown"></textarea>
+    <div class="edside">
+      <div class="edwrap">
+        <pre id="edhl" aria-hidden="true"></pre>
+        <textarea id="edtext" spellcheck="false" aria-label="Slide Markdown"></textarea>
+      </div>
+      <label for="ednotes">Speaker notes</label>
+      <textarea id="ednotes" spellcheck="false"></textarea>
+    </div>
     <div id="edview"></div>
   </div>
   <div class="bar">
-    <span class="grow"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> applies · <kbd>Ctrl</kbd>+<kbd>S</kbd> applies and saves · <kbd>Esc</kbd> cancels</span>
+    <span id="edhelp" class="grow"></span>
     <button id="edcancel">Cancel</button>
     <button id="edapply" class="primary">Apply</button>
   </div>
@@ -213,6 +249,192 @@
 
 <script>
 'use strict';
+
+// <pure> Funções sem DOM nem estado; testadas em tests/ui_logic.test.js.
+
+const norm = (text) => text.replace(/\r\n/g, '\n').trim();
+
+/** Título de uma lâmina: o primeiro título Markdown ou, na falta, a primeira linha de texto. */
+function slideTitle(text) {
+  let fallback = '';
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('<') || line.startsWith('![') || line.startsWith('```')) continue;
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    const clean = (heading ? heading[1] : line).replace(/\*\*|__|`/g, '').trim();
+    if (heading) return clean;
+    fallback = fallback || clean;
+  }
+  return fallback;
+}
+
+/** Tabela da maior subsequência comum: `t[i][j]` é o tamanho para `a[i..]` e `b[j..]`. */
+function lcsTable(a, b) {
+  const t = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      t[i][j] = a[i] === b[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]);
+    }
+  }
+  return t;
+}
+
+/** De 0 a 1: fração das linhas não vazias que os dois textos têm em comum. */
+function similarity(a, b) {
+  const lines = (text) => norm(text).split('\n').map((l) => l.trim()).filter(Boolean);
+  const x = lines(a), y = lines(b);
+  if (!x.length && !y.length) return 1;
+  return 2 * lcsTable(x, y)[0][0] / (x.length + y.length);
+}
+
+/** Diferença linha a linha: `same`, `del` (só em `a`) e `add` (só em `b`). */
+function lineDiff(a, b) {
+  const x = norm(a).split('\n'), y = norm(b).split('\n');
+  const t = lcsTable(x, y), out = [];
+  let i = 0, j = 0;
+  while (i < x.length || j < y.length) {
+    if (i < x.length && j < y.length && x[i] === y[j]) { out.push({ kind: 'same', text: x[i] }); i++; j++; }
+    else if (j < y.length && (i === x.length || t[i][j + 1] > t[i + 1][j])) out.push({ kind: 'add', text: y[j++] });
+    else out.push({ kind: 'del', text: x[i++] });
+  }
+  return out;
+}
+
+/**
+ * Alinha duas listas de lâminas (`{text, title}`) pela maior subsequência comum dos textos.
+ * Devolve linhas `same`, `changed` (mesmo título ou texto parecido), `left` (só na primeira)
+ * e `right` (só na segunda; `at` é a posição em que ela entraria na primeira).
+ */
+function alignSlides(left, right) {
+  const a = left.map((s) => norm(s.text)), b = right.map((s) => norm(s.text));
+  const n = a.length, m = b.length, t = lcsTable(a, b);
+  const pair = (l, r) => (left[l].title && left[l].title === right[r].title) || similarity(a[l], b[r]) >= 0.5;
+  const rows = [];
+  let onlyL = [], onlyR = [], i = 0, j = 0;
+  const flush = () => {
+    let next = 0;
+    for (const l of onlyL) {
+      const hit = onlyR.findIndex((r, q) => q >= next && pair(l, r));
+      if (hit < 0) { rows.push({ kind: 'left', l }); continue; }
+      for (; next < hit; next++) rows.push({ kind: 'right', r: onlyR[next], at: l });
+      rows.push({ kind: 'changed', l, r: onlyR[hit] });
+      next = hit + 1;
+    }
+    for (; next < onlyR.length; next++) rows.push({ kind: 'right', r: onlyR[next], at: i });
+    onlyL = []; onlyR = [];
+  };
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i] === b[j]) { flush(); rows.push({ kind: 'same', l: i++, r: j++ }); }
+    else if (j < m && (i === n || t[i][j + 1] >= t[i + 1][j])) onlyR.push(j++);
+    else onlyL.push(i++);
+  }
+  flush();
+  return rows;
+}
+
+const DIRECTIVES = new Set(['marp', 'theme', 'style', 'headingdivider', 'size', 'math', 'title', 'author',
+  'description', 'keywords', 'url', 'image', 'lang', 'paginate', 'header', 'footer', 'class', 'color',
+  'backgroundcolor', 'backgroundimage', 'backgroundposition', 'backgroundrepeat', 'backgroundsize', 'transition']);
+
+/** Um comentário só com `chave: valor` de diretivas do Marp não é nota do apresentador. */
+function isDirectiveComment(inner) {
+  const lines = inner.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every((line) => {
+    const key = line.match(/^_?([A-Za-z]+)\s*:/);
+    return key && DIRECTIVES.has(key[1].toLowerCase());
+  });
+}
+
+/** Trechos `[início, fim)` do texto que estão dentro de blocos de código cercados. */
+function fencedRanges(text) {
+  const ranges = [];
+  let open = null, at = 0;
+  for (const line of text.split('\n')) {
+    const fence = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence && !open) open = { mark: fence[1], start: at };
+    else if (fence && fence[1][0] === open.mark[0] && fence[1].length >= open.mark.length) {
+      ranges.push([open.start, at + line.length]);
+      open = null;
+    }
+    at += line.length + 1;
+  }
+  if (open) ranges.push([open.start, text.length]);
+  return ranges;
+}
+
+/** Separa as notas do apresentador (comentários que não são diretivas) do resto da lâmina. */
+function splitNotes(text) {
+  const fences = fencedRanges(text), notes = [];
+  const body = text.replace(/<!--([\s\S]*?)-->/g, (whole, inner, at) => {
+    if (isDirectiveComment(inner) || fences.some(([from, to]) => at >= from && at < to)) return whole;
+    notes.push(inner.trim());
+    return '';
+  });
+  if (!notes.length) return { body: text, notes: '' };
+  return { body: body.replace(/\n{3,}/g, '\n\n').trim(), notes: notes.join('\n\n') };
+}
+
+/** O inverso de `splitNotes`: as notas voltam como um comentário no fim da lâmina. */
+function joinNotes(body, notes) {
+  const clean = notes.trim().replace(/-->/g, '-- >');
+  return clean ? `${body.trimEnd()}\n\n<!--\n${clean}\n-->` : body;
+}
+
+/** Markdown colorido como HTML, com exatamente os mesmos caracteres do texto. */
+function highlight(text) {
+  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const span = (kind, t) => `<span class="hl-${kind}">${t}</span>`;
+  const inline = (t) => esc(t)
+    .replace(/(`+)[^`]*\1/g, (m) => span('code', m))
+    .replace(/!?\[[^\]\n]*\]\([^)\n]*\)/g, (m) => span('lk', m));
+  let fence = null, comment = false;
+  return text.split('\n').map((line) => {
+    const mark = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      if (mark && mark[1][0] === fence[0] && mark[1].length >= fence.length) fence = null;
+      return span('code', esc(line));
+    }
+    if (comment || /^\s*<!--/.test(line)) {
+      comment = !/-->/.test(line.slice(comment ? 0 : line.indexOf('<!--') + 4));
+      return span('cm', esc(line));
+    }
+    if (mark) { fence = mark[1]; return span('code', esc(line)); }
+    if (/^ {0,3}#{1,6}(\s|$)/.test(line)) return span('hd', esc(line));
+    if (/^ {0,3}([-*_])( *\1){2,} *$/.test(line)) return span('hr', esc(line));
+    const item = line.match(/^(\s*)([-*+]|\d+[.)])(\s.*)?$/);
+    if (item) return esc(item[1]) + span('mk', esc(item[2])) + inline(item[3] || '');
+    return inline(line);
+  }).join('\n');
+}
+
+/**
+ * Depois de salvar edições o servidor renumera as lâminas. Devolve a função que leva um
+ * item do histórico (`{k, id, text?, fresh?}`, com ids antigos) para a numeração nova.
+ * `saved` são os itens que foram gravados; se cada um virou uma lâmina, a posição diz o id.
+ */
+function makeRemap(oldSlides, newSlides, saved, base) {
+  const origin = new Map(), byText = new Map();
+  if (saved.length === newSlides.length) {
+    saved.forEach((item, at) => { if (!item.fresh && !origin.has(item.id)) origin.set(item.id, at); });
+  }
+  newSlides.forEach((slide, id) => { if (!byText.has(slide.text)) byText.set(slide.text, id); });
+  return (item) => {
+    const text = item.text ?? oldSlides[item.id].text;
+    const id = item.fresh ? undefined : origin.get(item.id);
+    if (id !== undefined) return newSlides[id].text === text ? { k: item.k, id } : { k: item.k, id, text };
+    if (byText.has(text)) return { k: item.k, id: byText.get(text) };
+    return { k: item.k, id: base, text, fresh: true };
+  };
+}
+
+/** Todas as palavras da busca aparecem no texto, sem diferenciar maiúsculas. */
+function matchesQuery(text, query) {
+  const hay = text.toLowerCase();
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((word) => hay.includes(word));
+}
+
+// </pure>
+
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid'), bar = $('#bar');
 
@@ -225,6 +447,9 @@ let anchor = null;       // último cartão clicado
 let undo = [], redo = [];
 let nextKey = 1;
 let offline = false;
+let query = '';          // texto da busca
+let clip = null;         // lâminas copiadas: {doc, texts}
+const draftKeys = new Map();   // texto de lâmina não salva -> chave da miniatura no servidor
 const cards = new Map(); // chave -> elemento
 
 const post = (url, body) => fetch(url, {
@@ -251,19 +476,7 @@ const removedCount = () => S.disk_order.filter((id) => !items.some((it) => it.id
 const textOf = (item) => item.text ?? S.slides[item.id].text;
 const entry = (item) => (item.text == null ? { id: item.id } : { id: item.id, text: item.text });
 
-function titleOf(item) {
-  if (item.text == null) return S.slides[item.id].title;
-  let fallback = '';
-  for (const raw of item.text.split('\n')) {
-    const line = raw.trim();
-    if (!line || line.startsWith('<') || line.startsWith('![') || line.startsWith('```')) continue;
-    const heading = line.match(/^#{1,6}\s+(.*)$/);
-    const clean = (heading ? heading[1] : line).replace(/\*\*|__|`/g, '').trim();
-    if (heading) return clean;
-    fallback = fallback || clean;
-  }
-  return fallback;
-}
+const titleOf = (item) => (item.text == null ? S.slides[item.id].title : slideTitle(item.text));
 const selected = () => items.filter((it) => sel.has(it.k));
 const cardList = () => [...grid.querySelectorAll('.card')];
 
@@ -291,6 +504,36 @@ function commit(next) {
 
 function thumbSrc(id) {
   return `/thumb/${cur.doc}/${id}?g=${S.generation}&v=${S.thumbs.version}`;
+}
+
+/** Miniatura do item: a do disco ou, se ele foi editado, a do rascunho quando estiver pronta. */
+function faceSrc(item) {
+  if (item.text != null) {
+    const key = draftKeys.get(item.text);
+    if (key && S.thumbs.drafts.includes(key)) return `/thumb/${cur.doc}/d-${key}`;
+    if (item.fresh) return '';
+  }
+  return S.thumbs.have[item.id] ? thumbSrc(item.id) : '';
+}
+
+let draftTimer = null;
+/** Pede ao servidor, em segundo plano, as miniaturas das lâminas editadas ou acrescentadas. */
+function requestDrafts() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(async () => {
+    const tab = cur, list = items;
+    if (!S || S.thumbs.state === 'off') return;
+    const ready = (text) => draftKeys.has(text) && S.thumbs.drafts.includes(draftKeys.get(text));
+    const need = list.filter((it) => it.text != null && !ready(it.text)).map((it) => it.text);
+    const asked = S.generation + '\u0000' + need.join('\u0000');
+    if (!need.length || tab.asked === asked) return;
+    tab.asked = asked;
+    try {
+      const res = await post('/api/draft', { doc: tab.doc, generation: S.generation, slides: list.map(entry) });
+      if (!res.ok) return;
+      (await res.json()).keys.forEach((key, at) => { if (key) draftKeys.set(list[at].text, key); });
+    } catch {}
+  }, 700);
 }
 
 function makeCard(item) {
@@ -329,7 +572,7 @@ function paint(el, item) {
   el.classList.toggle('changed', item.text != null);
 
   const face = el.querySelector('.face');
-  const src = !item.fresh && S.thumbs.have[item.id] ? thumbSrc(item.id) : '';
+  const src = faceSrc(item);
   const key = src + '\n' + (item.text ?? '');
   if (face.dataset.key === key) return;
   face.dataset.key = key;
@@ -362,9 +605,11 @@ function render() {
     const origin = item.fresh ? -1 : S.disk_order.indexOf(item.id);
     const was = el.querySelector('.was');
     was.textContent = origin < 0 ? 'new' : origin !== i ? `was ${origin + 1}` : '';
+    el.classList.toggle('dim', !!query && !matchesQuery(titleOf(item) + '\n' + textOf(item), query));
     if (grid.children[i + 1] !== el) grid.insertBefore(el, grid.children[i + 1] || null);
   });
   renderSel();
+  requestDrafts();
 }
 
 function renderSel() {
@@ -373,6 +618,7 @@ function renderSel() {
   const removed = removedCount();
   const info = $('#info');
   info.textContent = `${items.length} slide${items.length === 1 ? '' : 's'}` + (sel.size > 1 ? ` · ${sel.size} selected` : '');
+  if (query) info.textContent += ` · ${grid.querySelectorAll('.card:not(.dim)').length} found`;
   if (dirty) {
     const mark = document.createElement('span');
     mark.className = 'dirty';
@@ -388,7 +634,10 @@ function renderSel() {
 }
 
 function showStatus(status) {
-  $('#external').hidden = !status.external_change;
+  $('#external').hidden = !(status.external_change || S.stale);
+  $('#external span').textContent = S.stale
+    ? 'This file was saved from another marp-order window.'
+    : 'The file was changed outside marp-order.';
   const t = status.thumbs;
   $('#mismatch').hidden = t.state !== 'mismatch';
   $('#mismatch span').textContent = 'Warning: ' + t.message +
@@ -524,19 +773,54 @@ grid.addEventListener('dblclick', (e) => {
   if (el) openEditor(items.find((it) => it.k === Number(el.dataset.k)));
 });
 
-// ---- editor de lâmina ------------------------------------------------------
+// ---- editor de lâmina e do front-matter --------------------------------------
 
-const editor = $('#editor'), edtext = $('#edtext'), edview = $('#edview');
-let editing = null;      // {k, initial, busy, again}
+const editor = $('#editor'), edtext = $('#edtext'), ednotes = $('#ednotes'), edview = $('#edview');
+let editing = null;      // {mode: 'slide' | 'head', k, initial, body, notes, busy, again}
 
-function openEditor(item) {
-  editing = { k: item.k, initial: textOf(item) };
-  edtext.value = editing.initial;
-  $('#edtitle').textContent = `Slide ${items.indexOf(item) + 1}`;
+function showEditor(title, help) {
+  $('#edtitle').textContent = title;
+  $('#edhelp').innerHTML = help;
+  editor.classList.toggle('head', editing.mode === 'head');
+  $('#edapply').textContent = editing.mode === 'head' ? 'Save' : 'Apply';
   edview.replaceChildren();
   editor.showModal();
+  paintEditor();
   edtext.focus();
+  edtext.setSelectionRange(0, 0);
+  edtext.scrollTop = 0;
   refreshPreview();
+}
+
+function openEditor(item) {
+  const initial = textOf(item);
+  editing = { mode: 'slide', k: item.k, initial, ...splitNotes(initial) };
+  edtext.value = editing.body;
+  ednotes.value = editing.notes;
+  showEditor(`Slide ${items.indexOf(item) + 1}`,
+    '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> applies · <kbd>Ctrl</kbd>+<kbd>S</kbd> applies and saves · <kbd>Esc</kbd> cancels');
+}
+
+/** O front-matter vale para o arquivo todo e é gravado na hora, sem passar pelo histórico. */
+function openHead() {
+  if (isDirty()) return toast('Save or discard your changes before editing the front matter.');
+  editing = { mode: 'head', initial: S.head.trim() };
+  edtext.value = editing.initial;
+  ednotes.value = '';
+  showEditor('Front matter', 'Theme and global settings, between two <kbd>---</kbd> lines · ' +
+    '<kbd>Ctrl</kbd>+<kbd>S</kbd> saves to the file · <kbd>Esc</kbd> cancels');
+}
+
+/** Texto em edição; sem alterações, devolve o original byte a byte (as notas não mudam de lugar). */
+function editedText() {
+  if (editing.mode === 'head') return edtext.value.trim();
+  if (edtext.value === editing.body && ednotes.value === editing.notes) return editing.initial;
+  return joinNotes(edtext.value, ednotes.value).trim();
+}
+
+function paintEditor() {
+  $('#edhl').innerHTML = highlight(edtext.value) + '\n';
+  $('#edhl').scrollTop = edtext.scrollTop;
 }
 
 function edStatus(message, isError) {
@@ -553,12 +837,19 @@ async function refreshPreview() {
   session.busy = true;
   edStatus('updating…');
   try {
-    const slides = items.map((it) => (it.k === session.k ? { id: it.id, text: edtext.value } : entry(it)));
-    const index = items.findIndex((it) => it.k === session.k);
-    const res = await post('/api/preview', { doc: cur.doc, generation: S.generation, slides, index });
+    const request = { doc: cur.doc, generation: S.generation };
+    if (session.mode === 'head') {
+      const head = editedText();
+      Object.assign(request, { slides: items.map(entry), index: 0, head: head ? head + '\n' : '' });
+    } else {
+      const text = editedText();
+      request.slides = items.map((it) => (it.k === session.k ? { id: it.id, text } : entry(it)));
+      request.index = items.findIndex((it) => it.k === session.k);
+    }
+    const res = await post('/api/preview', request);
     const body = await res.json();
     if (editing === session) {
-      if (res.ok) { showPreview(`/preview/slide.html?page=${body.page}&t=${Date.now()}`); edStatus(''); }
+      if (res.ok) { showPreview(`/preview/slide.html?page=${body.page}&t=${Date.now()}`); edStatus(session.error || '', !!session.error); }
       else edStatus(body.error, true);
     }
   } catch {
@@ -587,25 +878,55 @@ function closeEditor() {
   edview.replaceChildren();
 }
 
+async function saveHead(force) {
+  const tab = cur, session = editing;
+  let res, body;
+  try {
+    res = await post('/api/head', { doc: tab.doc, head: editedText(), force: !!force });
+    body = await res.json();
+  } catch {
+    return edStatus('no response from marp-order', true);
+  }
+  if (editing !== session || cur !== tab) return;
+  if (res.status === 409) {
+    if (confirm('The file was changed outside marp-order since it was opened.\n\n' +
+        'OK: overwrite it (a copy of the current file is kept).\nCancel: do not save.')) return saveHead(true);
+    return;
+  }
+  if (!res.ok) { session.error = body.error; return edStatus(body.error, true); }
+  closeEditor();
+  adopt(body);
+  toast('Front matter saved.');
+}
+
+/** Aplica a edição; devolve `false` quando ela foi para o servidor (front-matter). */
 function applyEdit() {
-  const k = editing.k, text = edtext.value.trim();
+  if (editing.mode === 'head') { saveHead(false); return false; }
+  const k = editing.k, text = editedText();
   closeEditor();
   commit(items.map((it) => {
     if (it.k !== k || text === textOf(it)) return it;
-    return text === S.slides[it.id].text && !it.fresh ? { k: it.k, id: it.id } : { ...it, text };
+    return withText(it, text);
   }));
+  return true;
 }
 
 function cancelEdit() {
-  const changed = edtext.value.trim() !== editing.initial.trim();
-  if (!changed || confirm('Discard the changes to this slide?')) closeEditor();
+  const changed = editedText() !== editing.initial.trim();
+  if (!changed || confirm('Discard the changes?')) closeEditor();
 }
 
 let edTimer = null;
-edtext.addEventListener('input', () => {
+const edited = () => {
+  if (editing) editing.error = '';
+  paintEditor();
   clearTimeout(edTimer);
   edTimer = setTimeout(refreshPreview, 200);
-});
+};
+edtext.addEventListener('input', edited);
+ednotes.addEventListener('input', edited);
+edtext.addEventListener('scroll', () => { $('#edhl').scrollTop = edtext.scrollTop; });
+new ResizeObserver(paintEditor).observe(edtext);
 editor.addEventListener('cancel', (e) => { e.preventDefault(); cancelEdit(); });
 editor.addEventListener('keydown', (e) => {
   if (!(e.ctrlKey || e.metaKey)) return;
@@ -614,44 +935,68 @@ editor.addEventListener('keydown', (e) => {
   // sem isto o atalho global de Ctrl+S salvaria uma segunda vez
   e.preventDefault();
   e.stopPropagation();
-  applyEdit();
-  if (key === 's') save(false);
+  if (applyEdit() && key === 's') save(false);
 });
 $('#edapply').onclick = applyEdit;
 $('#edcancel').onclick = cancelEdit;
+$('#fm').onclick = openHead;
 
 // ---- servidor --------------------------------------------------------------
 
 async function save(force) {
   if (!isDirty()) return;
-  const tab = cur;
+  const tab = cur, saved = items;
   const removed = removedCount();
   if (removed && !force && !confirm(`${removed} slide(s) will be removed from the file. Continue?`)) return;
   let res;
   try {
-    res = await post('/api/save', { doc: tab.doc, generation: S.generation, slides: items.map(entry), force: !!force });
+    res = await post('/api/save', {
+      doc: tab.doc, generation: S.generation, save_seq: S.save_seq, slides: saved.map(entry), force: !!force,
+    });
   } catch {
     return toast('Could not reach marp-order.');
   }
   const body = await res.json();
-  if (cur !== tab) return;   // trocou de aba: o poll acerta o estado ao voltar
-  if (res.status === 409 && body.error === 'external_change') {
-    if (confirm('The file was changed outside marp-order since it was opened.\n\n' +
-        'OK: overwrite it with your changes (a copy of the current file is kept).\n' +
+  if (cur !== tab) { tab.S = null; return; }   // trocou de aba: ela é relida ao voltar
+  if (res.status === 409 && (body.error === 'external_change' || body.error === 'stale')) {
+    const who = body.error === 'stale' ? 'saved from another marp-order window' : 'changed outside marp-order';
+    if (confirm(`The file was ${who} since it was loaded here.\n\n` +
+        'OK: overwrite it with what you see here (a copy of the current file is kept).\n' +
         'Cancel: do not save.')) return save(true);
     return;
   }
   if (!res.ok) return toast('Could not save: ' + body.error);
   if (body.generation !== S.generation) {
     // houve edição de conteúdo: o servidor releu o arquivo e renumerou as lâminas
-    await refetch(tab);
+    await rebase(tab, saved);
   } else {
     S.disk_order = body.disk_order;
     S.thumbs = body.thumbs;
+    S.save_seq = body.save_seq;
+    S.stale = false;
     render();
     showStatus(body);
   }
-  toast(`File saved. Backup of the original: ${body.backup}`);
+  toast(`File saved. Backup of the original: ${body.backup.split('/').slice(-2).join('/')}`);
+}
+
+/** Adota o arquivo regravado sem perder o histórico de desfazer nem a seleção. */
+async function rebase(tab, saved) {
+  const res = await fetch(`/api/state?doc=${tab.doc}`);
+  if (!res.ok) return dropTab(tab);
+  const state = await res.json();
+  if (cur !== tab) { tab.S = null; return; }
+  const remap = makeRemap(S.slides, state.slides, saved, state.disk_order[0] ?? 0);
+  const whole = saved.length === state.slides.length;
+  undo = undo.map((list) => list.map(remap));
+  redo = redo.map((list) => list.map(remap));
+  // o que acabou de ser gravado é, por definição, o que está no disco
+  items = whole ? saved.map((it, id) => ({ k: it.k, id })) : state.disk_order.map((id) => ({ k: nextKey++, id }));
+  S = state;
+  cards.forEach((el) => el.remove());
+  cards.clear();
+  render();
+  showStatus(S);
 }
 
 async function reload() {
@@ -687,15 +1032,103 @@ async function poll() {
   if (!tab || cur !== tab) return;
   if (res.status === 404) return dropTab(tab);   // fechado em outra janela
   if (!S) return;
-  if (status.generation !== S.generation) return refetch(tab);
-  const fresh = status.thumbs.version !== S.thumbs.version;
-  const moved = !sameOrder(status.disk_order, S.disk_order);
+  if (status.generation !== S.generation || status.save_seq !== S.save_seq) {
+    // outra janela gravou este arquivo: sem nada pendente aqui, é só acompanhar
+    if (isDirty() || editing) S.stale = true;
+    else if (status.generation !== S.generation) return refetch(tab);
+    else {
+      const pool = items.slice();
+      items = status.disk_order.map((id) => {
+        const at = pool.findIndex((it) => it.id === id);
+        return at < 0 ? { k: nextKey++, id } : pool.splice(at, 1)[0];
+      });
+      S.disk_order = status.disk_order;
+      S.save_seq = status.save_seq;
+      render();
+    }
+  }
+  const fresh = status.thumbs.version !== S.thumbs.version || status.thumbs.drafts.length !== S.thumbs.drafts.length;
   S.thumbs = status.thumbs;
   S.external_change = status.external_change;
-  if (moved) { S.disk_order = status.disk_order; render(); }
-  else if (fresh) for (const item of items) paint(cards.get(item.k), item);
+  if (fresh) { for (const item of items) paint(cards.get(item.k), item); requestDrafts(); }
   showStatus(status);
 }
+
+/** Texto de lâminas de outro arquivo, com os caminhos de imagem acertados para este. */
+async function importTexts(from, to, texts) {
+  if (from === to || !texts.length) return texts;
+  try {
+    const res = await post('/api/import', { from, to, texts });
+    if (res.ok) return (await res.json()).texts;
+  } catch {}
+  return texts;
+}
+
+// ---- copiar, recortar, colar e buscar ---------------------------------------
+
+/** Lâmina que não veio deste arquivo; `id` só indica de qual lâmina copiar o espaçamento. */
+const foreignIn = (state, text) => ({ k: nextKey++, id: state.disk_order[0] ?? 0, text, fresh: true });
+const foreign = (text) => foreignIn(S, text);
+const withText = (item, text) => (text === S.slides[item.id].text && !item.fresh
+  ? { k: item.k, id: item.id } : { ...item, text });
+const plural = (n) => `${n} slide${n === 1 ? '' : 's'}`;
+
+function copySelection(cut) {
+  const texts = selected().map(textOf);
+  if (!texts.length) return;
+  clip = { doc: cur.doc, texts };
+  navigator.clipboard?.writeText(texts.join('\n\n---\n\n')).catch(() => {});
+  if (cut) removeSelection();
+  toast(`${plural(texts.length)} ${cut ? 'cut' : 'copied'}. Ctrl+V pastes, in this or another tab.`);
+}
+
+async function paste() {
+  if (!clip) return;
+  if (!S.slides.length) return toast('This file has no slides to paste next to.');
+  const tab = cur;
+  const texts = await importTexts(clip.doc, tab.doc, clip.texts);
+  if (cur !== tab) return;
+  const fresh = texts.map(foreign);
+  const last = items.reduce((at, it, i) => (sel.has(it.k) ? i : at), items.length - 1);
+  sel = new Set(fresh.map((it) => it.k));
+  commit([...items.slice(0, last + 1), ...fresh, ...items.slice(last + 1)]);
+  cards.get(fresh[0].k).scrollIntoView({ block: 'nearest' });
+}
+
+/** Copia lâminas para o fim de outra aba (arrastar sobre a aba), como alteração pendente dela. */
+async function copyToTab(tab, texts) {
+  const from = cur.doc;
+  if (!tab.S) {
+    const res = await fetch(`/api/state?doc=${tab.doc}`);
+    if (!res.ok) return dropTab(tab);
+    const state = await res.json();
+    Object.assign(tab, { S: state, items: state.disk_order.map((id) => ({ k: nextKey++, id })),
+      sel: new Set(), anchor: null, undo: [], redo: [] });
+  }
+  if (!tab.S.slides.length) return toast(`${tab.file} has no slides to add next to.`);
+  texts = await importTexts(from, tab.doc, texts);
+  if (tab === cur) return;
+  tab.undo.push(tab.items);
+  tab.redo = [];
+  tab.items = [...tab.items, ...texts.map((text) => foreignIn(tab.S, text))];
+  renderTabs();
+  toast(`${plural(texts.length)} copied to the end of ${tab.file}.`);
+}
+
+const find = $('#find');
+find.addEventListener('input', () => { query = find.value.trim(); render(); });
+find.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { find.value = ''; query = ''; render(); find.blur(); }
+  if (e.key !== 'Enter' || !query) return;
+  // Enter percorre os resultados
+  const hits = items.filter((it) => !cards.get(it.k).classList.contains('dim'));
+  if (!hits.length) return;
+  const at = hits.findIndex((it) => it.k === anchor);
+  const next = hits[(at + (e.shiftKey ? hits.length - 1 : 1)) % hits.length];
+  sel = new Set([next.k]); anchor = next.k;
+  renderSel();
+  cards.get(next.k).scrollIntoView({ block: 'center' });
+});
 
 // ---- abas ------------------------------------------------------------------
 
@@ -715,11 +1148,15 @@ function renderTabs() {
     x.title = 'Close this file';
     x.onclick = (e) => { e.stopPropagation(); closeTab(tab); };
     el.onclick = () => { if (tab !== cur) activate(tab); };
+    el.ondragover = (e) => { if (dragging && tab !== cur) { e.preventDefault(); el.classList.add('drop'); } };
+    el.ondragleave = () => el.classList.remove('drop');
+    el.ondrop = (e) => { e.preventDefault(); el.classList.remove('drop'); copyToTab(tab, selected().map(textOf)); };
     el.append(name, x);
     nav.insertBefore(el, $('#open'));
   }
   $('#empty').hidden = tabs.length > 0;
   $('#compare').disabled = !S || tabs.length < 2;
+  $('#fm').disabled = !S;
 }
 
 /** Troca de aba, guardando na anterior a ordem, as edições e o histórico não salvos. */
@@ -832,50 +1269,8 @@ $('#open').onclick = $('#openempty').onclick = openDialog;
 const differ = $('#differ');
 let other = null;        // estado (salvo em disco) do arquivo comparado
 
-const norm = (text) => text.replace(/\r\n/g, '\n').trim();
-
-/**
- * Alinha as lâminas desta aba (`left`) com as do outro arquivo (`right`) pela maior
- * subsequência comum. Devolve linhas `same`, `changed` (mesmo título, texto diferente),
- * `left` (só aqui) e `right` (só no outro; `at` é onde ela entraria nesta aba).
- */
-function diffRows(left, right) {
-  const a = left.map((it) => norm(textOf(it))), b = right.map((slide) => norm(slide.text));
-  const n = a.length, m = b.length;
-  const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
-    }
-  }
-  const rows = [];
-  let onlyL = [], onlyR = [], i = 0, j = 0;
-  const flush = () => {
-    let next = 0;
-    for (const l of onlyL) {
-      const title = titleOf(left[l]);
-      const hit = title ? onlyR.findIndex((r, q) => q >= next && right[r].title === title) : -1;
-      if (hit < 0) { rows.push({ kind: 'left', l }); continue; }
-      for (; next < hit; next++) rows.push({ kind: 'right', r: onlyR[next], at: l });
-      rows.push({ kind: 'changed', l, r: onlyR[hit] });
-      next = hit + 1;
-    }
-    for (; next < onlyR.length; next++) rows.push({ kind: 'right', r: onlyR[next], at: i });
-    onlyL = []; onlyR = [];
-  };
-  while (i < n || j < m) {
-    if (i < n && j < m && a[i] === b[j]) { flush(); rows.push({ kind: 'same', l: i++, r: j++ }); }
-    else if (j < m && (i === n || lcs[i][j + 1] >= lcs[i + 1][j])) onlyR.push(j++);
-    else onlyL.push(i++);
-  }
-  flush();
-  return rows;
-}
-
-/** Lâmina vinda de outro arquivo; `id` só indica de qual lâmina copiar o espaçamento. */
-const foreign = (slide) => ({ k: nextKey++, id: S.disk_order[0] ?? 0, text: slide.text, fresh: true });
-const withText = (item, text) => (text === S.slides[item.id].text && !item.fresh
-  ? { k: item.k, id: item.id } : { ...item, text });
+const rightSlides = () => other.disk_order.map((id) => other.slides[id]);
+const diffRows = (right) => alignSlides(items.map((it) => ({ text: textOf(it), title: titleOf(it) })), right);
 
 function mini(number, title, src, text) {
   const el = document.createElement('div');
@@ -900,22 +1295,35 @@ function mini(number, title, src, text) {
   return el;
 }
 
+/** Diferença linha a linha entre dois textos: o que só há aqui e o que só há no outro. */
+function diffBlock(label, mine, theirs) {
+  const details = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = label;
+  const block = document.createElement('div');
+  block.className = 'dfdiff';
+  for (const line of lineDiff(mine, theirs)) {
+    const row = document.createElement('div');
+    if (line.kind !== 'same') row.className = line.kind;
+    row.textContent = line.text;
+    block.append(row);
+  }
+  details.append(summary, block);
+  return details;
+}
+
 function renderDiff() {
   $('#dfundo').disabled = !undo.length;
   if (!other) return;
-  const right = other.disk_order.map((id) => other.slides[id]);
-  const rows = diffRows(items, right);
+  const right = rightSlides();
+  const rows = diffRows(right);
   const count = (kind) => rows.filter((row) => row.kind === kind).length;
   const parts = [[count('changed'), 'different'], [count('left'), 'only here'], [count('right'), 'only in the other']]
     .filter(([n]) => n).map(([n, label]) => `${n} ${label}`);
   $('#dfsummary').textContent = parts.length ? parts.join(' · ') : 'Both files have the same slides.';
   $('#dfall').disabled = !parts.length || !S.slides.length;
 
-  const leftCard = (l) => {
-    const item = items[l];
-    const src = item.text == null && S.thumbs.have[item.id] ? thumbSrc(item.id) : '';
-    return mini(l + 1, titleOf(item), src, textOf(item));
-  };
+  const leftCard = (l) => mini(l + 1, titleOf(items[l]), faceSrc(items[l]), textOf(items[l]));
   const rightCard = (r) => {
     const slide = right[r];
     const src = other.thumbs.have[slide.id]
@@ -927,13 +1335,14 @@ function renderDiff() {
     button.textContent = label;
     button.title = title;
     button.disabled = !S.slides.length;
-    button.onclick = () => { run(); renderDiff(); };
+    button.onclick = async () => { button.disabled = true; await run(); renderDiff(); };
     return button;
   };
+  const theirs = async (r) => (await importTexts(other.doc, cur.doc, [right[r].text]))[0];
   const blank = () => document.createElement('span');
   const only = $('#dfonly').checked;
 
-  $('#dfrows').replaceChildren(...rows.filter((row) => !only || row.kind !== 'same').map((row) => {
+  const list = rows.filter((row) => !only || row.kind !== 'same').map((row) => {
     const el = document.createElement('div');
     el.className = 'dfrow ' + row.kind;
     const mid = document.createElement('div');
@@ -942,41 +1351,44 @@ function renderDiff() {
       mid.textContent = '=';
       el.append(leftCard(row.l), mid, rightCard(row.r));
     } else if (row.kind === 'changed') {
+      const key = items[row.l].k;
       mid.append('different', action('← Use other', 'Replace this slide with the one from the other file',
-        () => commit(items.map((it, at) => (at === row.l ? withText(it, right[row.r].text) : it)))));
-      const details = document.createElement('details');
-      const summary = document.createElement('summary');
-      summary.textContent = 'Show Markdown';
-      const texts = document.createElement('div');
-      texts.className = 'dftext';
-      for (const text of [textOf(items[row.l]), right[row.r].text]) {
-        const pre = document.createElement('pre');
-        pre.textContent = text;
-        texts.append(pre);
-      }
-      details.append(summary, texts);
-      el.append(leftCard(row.l), mid, rightCard(row.r), details);
+        async () => { const text = await theirs(row.r); commit(items.map((it) => (it.k === key ? withText(it, text) : it))); }));
+      el.append(leftCard(row.l), mid, rightCard(row.r),
+        diffBlock('Show what differs', textOf(items[row.l]), right[row.r].text));
     } else if (row.kind === 'left') {
+      const key = items[row.l].k;
       mid.append('only here', action('Remove', 'Remove this slide from this file',
-        () => commit(items.filter((_, at) => at !== row.l))));
+        () => commit(items.filter((it) => it.k !== key))));
       el.append(leftCard(row.l), mid, blank());
     } else {
       mid.append('only in the other', action('← Add', 'Copy this slide into this file, at this position',
-        () => commit([...items.slice(0, row.at), foreign(right[row.r]), ...items.slice(row.at)])));
+        async () => { const text = await theirs(row.r); commit([...items.slice(0, row.at), foreign(text), ...items.slice(row.at)]); }));
       el.append(blank(), mid, rightCard(row.r));
     }
     return el;
-  }));
+  });
+  if (norm(S.head) !== norm(other.head)) {
+    const el = document.createElement('div');
+    el.className = 'dfrow head';
+    el.append('The front matter (theme and global settings) differs. It is not merged: use the Front matter button to edit it.',
+      diffBlock('Show what differs', S.head, other.head));
+    list.unshift(el);
+  }
+  $('#dfrows').replaceChildren(...list);
 }
 
 /** Deixa as lâminas desta aba iguais às do outro arquivo, em um único passo desfazível. */
-function takeAll() {
-  const right = other.disk_order.map((id) => other.slides[id]);
+async function takeAll() {
+  const right = rightSlides(), rows = diffRows(right), base = items;
+  const wanted = rows.filter((row) => row.kind === 'changed' || row.kind === 'right');
+  const texts = await importTexts(other.doc, cur.doc, wanted.map((row) => right[row.r].text));
+  if (items !== base) return;
   const next = [];
-  for (const row of diffRows(items, right)) {
+  for (const row of rows) {
     if (row.kind === 'same') next.push(items[row.l]);
-    else if (row.kind === 'changed') next.push(withText(items[row.l], right[row.r].text));
-    else if (row.kind === 'right') next.push(foreign(right[row.r]));
+    else if (row.kind === 'changed') next.push(withText(items[row.l], texts[wanted.indexOf(row)]));
+    else if (row.kind === 'right') next.push(foreign(texts[wanted.indexOf(row)]));
   }
   commit(next);
   renderDiff();
@@ -1038,11 +1450,16 @@ document.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
   if (mod && key === 'o') { e.preventDefault(); return openDialog(); }
   if (!S) return;
+  if (mod && key === 'f') { e.preventDefault(); find.focus(); return find.select(); }
+  if (e.target === find) return;   // na busca, as teclas são texto
   let handled = true;
   if (mod && key === 's') save(false);
   else if (mod && key === 'z' && !e.shiftKey) stepHistory(undo, redo);
   else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) stepHistory(redo, undo);
   else if (mod && key === 'd') duplicateSelection();
+  else if (mod && key === 'c' && sel.size) copySelection(false);
+  else if (mod && key === 'x' && sel.size) copySelection(true);
+  else if (mod && key === 'v' && clip) paste();
   else if (mod && key === 'a') { sel = new Set(items.map((it) => it.k)); renderSel(); }
   else if (key === 'delete' || key === 'backspace') removeSelection();
   else if (mod && key === 'r' && !e.shiftKey) reload();

@@ -1,6 +1,6 @@
 [package]
 name = "marp-order"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Reorganiza as lâminas de uma apresentação Marp em uma matriz visual"
 license = "MIT"

@@ -13,8 +13,9 @@ build: $(BIN) ## compila o binário de release
 $(BIN): $(SRC)
 	cargo build --release
 
-test: ## roda os testes do parser/writer
+test: ## roda os testes do parser, do servidor e da interface
 	cargo test
+	node --test tests/ui_logic.test.js
 
 install: $(BIN) ## copia o binário para ~/.local/bin
 	install -m 755 $(BIN) $(HOME)/.local/bin/marp-order
