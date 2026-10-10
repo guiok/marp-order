@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,7 +22,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  /* barra e avisos ficam visíveis mesmo com a página rolada */
+  /* the bar and the warnings stay visible when the page is scrolled */
   #top { position: sticky; top: 0; z-index: 10; background: var(--bg); }
   header { background: var(--panel);
            border-bottom: 1px solid var(--line); padding: 8px 16px;
@@ -34,6 +34,8 @@
   .tab.on { background: var(--panel); color: var(--text); font-weight: 600; }
   .tab .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tab.dirty .name::after { content: ' •'; color: var(--warn); }
+  #lang { margin: 0 0 4px auto; font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 6px;
+          background: var(--panel); color: var(--text); }
   .tab .x, #open { border: 0; background: none; padding: 1px 6px; color: inherit; }
   #open { margin-bottom: 4px; color: var(--accent); }
   .nodoc header, .nodoc #grid, .nodoc .help { display: none; }
@@ -97,7 +99,7 @@
   #edtext, #edhl, #ednotes { margin: 0; padding: 10px; border-radius: 6px; border: 1px solid var(--line);
             tab-size: 2; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
             white-space: pre-wrap; overflow-wrap: break-word; }
-  /* o texto visível é o do <pre> colorido por baixo; a área de texto fica transparente por cima */
+  /* the visible text is the coloured <pre> underneath; the text area on top is transparent */
   #edhl { position: absolute; inset: 0; overflow-y: scroll; pointer-events: none;
           background: var(--bg); color: var(--text); }
   #edtext { position: relative; flex: 1; min-height: 50vh; resize: vertical; overflow-y: scroll;
@@ -160,41 +162,36 @@
 </head>
 <body>
 <div id="top">
-<nav id="tabs"><button id="open" title="Open a file (Ctrl+O)">+ Open</button></nav>
+<nav id="tabs"><button id="open" data-tt="Open a file (Ctrl+O)" data-t="+ Open"></button>
+  <select id="lang" data-tt="Language" aria-label="Language"><option value="en">EN</option><option value="pt">PT</option></select></nav>
 <header>
   <span id="info"></span>
-  <input id="find" type="search" placeholder="Find…" title="Find slides by text (Ctrl+F)" aria-label="Find slides">
-  <label class="size">Size <input id="size" type="range" min="140" max="520" step="20" value="260"></label>
-  <button id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
-  <button id="redo" title="Redo (Ctrl+Y)">↷ Redo</button>
-  <button id="dup" title="Duplicate selected (Ctrl+D)">Duplicate</button>
-  <button id="del" title="Remove selected (Delete)">Remove</button>
-  <button id="fm" title="Edit the front matter (theme and global settings)">Front matter</button>
-  <button id="compare" title="Compare with another open file and merge slides">Compare…</button>
-  <button id="discard" title="Go back to what is saved in the file">Discard</button>
-  <button id="save" class="primary" title="Write the changes to the file (Ctrl+S)">Save</button>
+  <input id="find" type="search" data-tp="Find…" data-tt="Find slides by text (Ctrl+F)" aria-label="Find slides">
+  <label class="size"><span data-t="Size"></span> <input id="size" type="range" min="140" max="520" step="20" value="260"></label>
+  <button id="undo" data-tt="Undo (Ctrl+Z)" data-t="↶ Undo"></button>
+  <button id="redo" data-tt="Redo (Ctrl+Y)" data-t="↷ Redo"></button>
+  <button id="dup" data-tt="Duplicate selected (Ctrl+D)" data-t="Duplicate"></button>
+  <button id="del" data-tt="Remove selected (Delete)" data-t="Remove"></button>
+  <button id="fm" data-tt="Edit the front matter (theme and global settings)" data-t="Front matter"></button>
+  <button id="compare" data-tt="Compare with another open file and merge slides" data-t="Compare…"></button>
+  <button id="discard" data-tt="Go back to what is saved in the file" data-t="Discard"></button>
+  <button id="save" class="primary" data-tt="Write the changes to the file (Ctrl+S)"></button>
 </header>
 
 <div id="external" class="banner warn" hidden>
   <span></span>
-  <button id="reload" title="Reload from disk (Ctrl+R)">Reload from disk (Ctrl+R)</button>
+  <button id="reload" data-t="Reload from disk (Ctrl+R)"></button>
 </div>
 <div id="mismatch" class="banner danger" hidden><span></span></div>
-<div id="thumbnote" class="banner warn" hidden><span></span><button id="rethumb">Try again</button></div>
-<div id="offline" class="banner danger" hidden><span>marp-order has stopped. Start it again to continue.</span></div>
+<div id="thumbnote" class="banner warn" hidden><span></span><button id="rethumb" data-t="Try again"></button></div>
+<div id="offline" class="banner danger" hidden><span data-t="marp-order has stopped. Start it again to continue."></span></div>
 
 </div>
 
-<p id="empty" hidden>No file open. <button id="openempty">Open a presentation…</button></p>
+<p id="empty" hidden><span data-t="No file open."></span> <button id="openempty" data-t="Open a presentation…"></button></p>
 <main id="grid"><div id="bar"></div></main>
 
-<p class="help">
-  Drag to reorder · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click selects several ·
-  <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> moves the selection · double-click edits ·
-  <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copies, cuts and pastes slides, also between tabs (or drag them onto a tab) ·
-  <kbd>Ctrl</kbd>+<kbd>F</kbd> finds · <kbd>Ctrl</kbd>+<kbd>R</kbd> reloads the file from disk · <kbd>Ctrl</kbd>+<kbd>O</kbd> opens another file ·
-  <span class="flag">⚠</span> marks a slide whose effect depends on its position (hover to see why).
-</p>
+<p class="help" data-t="help"></p>
 
 <dialog id="editor">
   <div class="bar"><strong id="edtitle"></strong><span id="edstatus" class="grow"></span></div>
@@ -204,29 +201,29 @@
         <pre id="edhl" aria-hidden="true"></pre>
         <textarea id="edtext" spellcheck="false" aria-label="Slide Markdown"></textarea>
       </div>
-      <label for="ednotes">Speaker notes</label>
+      <label for="ednotes" data-t="Speaker notes"></label>
       <textarea id="ednotes" spellcheck="false"></textarea>
     </div>
     <div id="edview"></div>
   </div>
   <div class="bar">
     <span id="edhelp" class="grow"></span>
-    <button id="edcancel">Cancel</button>
-    <button id="edapply" class="primary">Apply</button>
+    <button id="edcancel" data-t="Cancel"></button>
+    <button id="edapply" class="primary"></button>
   </div>
 </dialog>
 <dialog id="opener">
-  <div class="bar"><strong>Open a presentation</strong><span class="grow"></span><button id="opclose">Close</button></div>
+  <div class="bar"><strong data-t="Open a presentation"></strong><span class="grow"></span><button id="opclose" data-t="Close"></button></div>
   <div class="panes">
     <section>
-      <h2>Recent</h2>
+      <h2 data-t="Recent"></h2>
       <ul id="oprecent"></ul>
     </section>
     <section>
-      <h2>Browse</h2>
+      <h2 data-t="Browse"></h2>
       <form id="opform">
         <input id="oppath" spellcheck="false" aria-label="Folder or file path">
-        <button>Go</button>
+        <button data-t="Go"></button>
       </form>
       <ul id="oplist"></ul>
       <p id="operror"></p>
@@ -236,12 +233,12 @@
 
 <dialog id="differ">
   <div class="bar">
-    <strong>Compare</strong> <span id="dfleft"></span> with <select id="dfother" aria-label="Other file"></select>
+    <strong data-t="Compare"></strong> <span id="dfleft"></span> <span data-t="with"></span> <select id="dfother" aria-label="Other file"></select>
     <span id="dfsummary" class="grow"></span>
-    <label><input type="checkbox" id="dfonly"> only differences</label>
-    <button id="dfundo">↶ Undo</button>
-    <button id="dfall" title="Make this file's slides match the other file">Take all from other</button>
-    <button id="dfclose" class="primary">Done</button>
+    <label><input type="checkbox" id="dfonly"> <span data-t="only differences"></span></label>
+    <button id="dfundo" data-t="↶ Undo"></button>
+    <button id="dfall" data-tt="Make the slides of this file match the other file" data-t="Take all from other"></button>
+    <button id="dfclose" class="primary" data-t="Done"></button>
   </div>
   <div id="dfrows"></div>
 </dialog>
@@ -250,11 +247,11 @@
 <script>
 'use strict';
 
-// <pure> Funções sem DOM nem estado; testadas em tests/ui_logic.test.js.
+// <pure> Functions without DOM or state; tested in tests/ui_logic.test.js.
 
 const norm = (text) => text.replace(/\r\n/g, '\n').trim();
 
-/** Título de uma lâmina: o primeiro título Markdown ou, na falta, a primeira linha de texto. */
+/** Title of a slide: the first Markdown heading or, failing that, the first line of text. */
 function slideTitle(text) {
   let fallback = '';
   for (const raw of text.split('\n')) {
@@ -268,7 +265,7 @@ function slideTitle(text) {
   return fallback;
 }
 
-/** Tabela da maior subsequência comum: `t[i][j]` é o tamanho para `a[i..]` e `b[j..]`. */
+/** Longest-common-subsequence table: `t[i][j]` is the length for `a[i..]` and `b[j..]`. */
 function lcsTable(a, b) {
   const t = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
   for (let i = a.length - 1; i >= 0; i--) {
@@ -279,7 +276,7 @@ function lcsTable(a, b) {
   return t;
 }
 
-/** De 0 a 1: fração das linhas não vazias que os dois textos têm em comum. */
+/** From 0 to 1: share of the non-empty lines the two texts have in common. */
 function similarity(a, b) {
   const lines = (text) => norm(text).split('\n').map((l) => l.trim()).filter(Boolean);
   const x = lines(a), y = lines(b);
@@ -287,7 +284,7 @@ function similarity(a, b) {
   return 2 * lcsTable(x, y)[0][0] / (x.length + y.length);
 }
 
-/** Diferença linha a linha: `same`, `del` (só em `a`) e `add` (só em `b`). */
+/** Line-by-line difference: `same`, `del` (only in `a`) and `add` (only in `b`). */
 function lineDiff(a, b) {
   const x = norm(a).split('\n'), y = norm(b).split('\n');
   const t = lcsTable(x, y), out = [];
@@ -301,9 +298,9 @@ function lineDiff(a, b) {
 }
 
 /**
- * Alinha duas listas de lâminas (`{text, title}`) pela maior subsequência comum dos textos.
- * Devolve linhas `same`, `changed` (mesmo título ou texto parecido), `left` (só na primeira)
- * e `right` (só na segunda; `at` é a posição em que ela entraria na primeira).
+ * Aligns two lists of slides (`{text, title}`) by the longest common subsequence of their texts.
+ * Returns rows `same`, `changed` (same title or similar text), `left` (only in the first)
+ * and `right` (only in the second; `at` is where it would go in the first).
  */
 function alignSlides(left, right) {
   const a = left.map((s) => norm(s.text)), b = right.map((s) => norm(s.text));
@@ -336,7 +333,7 @@ const DIRECTIVES = new Set(['marp', 'theme', 'style', 'headingdivider', 'size', 
   'description', 'keywords', 'url', 'image', 'lang', 'paginate', 'header', 'footer', 'class', 'color',
   'backgroundcolor', 'backgroundimage', 'backgroundposition', 'backgroundrepeat', 'backgroundsize', 'transition']);
 
-/** Um comentário só com `chave: valor` de diretivas do Marp não é nota do apresentador. */
+/** A comment with nothing but `key: value` Marp directives is not a speaker note. */
 function isDirectiveComment(inner) {
   const lines = inner.split('\n').map((l) => l.trim()).filter(Boolean);
   return lines.length > 0 && lines.every((line) => {
@@ -345,7 +342,7 @@ function isDirectiveComment(inner) {
   });
 }
 
-/** Trechos `[início, fim)` do texto que estão dentro de blocos de código cercados. */
+/** Ranges `[start, end)` of the text that are inside fenced code blocks. */
 function fencedRanges(text) {
   const ranges = [];
   let open = null, at = 0;
@@ -362,7 +359,7 @@ function fencedRanges(text) {
   return ranges;
 }
 
-/** Separa as notas do apresentador (comentários que não são diretivas) do resto da lâmina. */
+/** Separates the speaker notes (comments that are not directives) from the rest of the slide. */
 function splitNotes(text) {
   const fences = fencedRanges(text), notes = [];
   const body = text.replace(/<!--([\s\S]*?)-->/g, (whole, inner, at) => {
@@ -374,13 +371,13 @@ function splitNotes(text) {
   return { body: body.replace(/\n{3,}/g, '\n\n').trim(), notes: notes.join('\n\n') };
 }
 
-/** O inverso de `splitNotes`: as notas voltam como um comentário no fim da lâmina. */
+/** The inverse of `splitNotes`: the notes go back as one comment at the end of the slide. */
 function joinNotes(body, notes) {
   const clean = notes.trim().replace(/-->/g, '-- >');
   return clean ? `${body.trimEnd()}\n\n<!--\n${clean}\n-->` : body;
 }
 
-/** Markdown colorido como HTML, com exatamente os mesmos caracteres do texto. */
+/** Markdown coloured as HTML, with exactly the same characters as the text. */
 function highlight(text) {
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const span = (kind, t) => `<span class="hl-${kind}">${t}</span>`;
@@ -408,9 +405,9 @@ function highlight(text) {
 }
 
 /**
- * Depois de salvar edições o servidor renumera as lâminas. Devolve a função que leva um
- * item do histórico (`{k, id, text?, fresh?}`, com ids antigos) para a numeração nova.
- * `saved` são os itens que foram gravados; se cada um virou uma lâmina, a posição diz o id.
+ * After saving edits the server renumbers the slides. Returns the function that takes a
+ * history item (`{k, id, text?, fresh?}`, with old ids) to the new numbering.
+ * `saved` are the items that were written; if each became one slide, the position is the id.
  */
 function makeRemap(oldSlides, newSlides, saved, base) {
   const origin = new Map(), byText = new Map();
@@ -427,10 +424,148 @@ function makeRemap(oldSlides, newSlides, saved, base) {
   };
 }
 
-/** Todas as palavras da busca aparecem no texto, sem diferenciar maiúsculas. */
+/** Every word of the query appears in the text, ignoring case. */
 function matchesQuery(text, query) {
   const hay = text.toLowerCase();
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((word) => hay.includes(word));
+}
+
+/** Texts that only exist as a key, with HTML markup. */
+const EN = {
+  help: 'Drag to reorder · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click selects several · ' +
+    '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> moves the selection · double-click edits · ' +
+    '<kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copies, cuts and pastes slides, also between tabs ' +
+    '(or drag them onto a tab) · <kbd>Ctrl</kbd>+<kbd>F</kbd> finds · <kbd>Ctrl</kbd>+<kbd>R</kbd> reloads the file ' +
+    'from disk · <kbd>Ctrl</kbd>+<kbd>O</kbd> opens another file · <span class="flag">⚠</span> marks a slide whose ' +
+    'effect depends on its position (hover to see why).',
+  'help.slide': '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> applies · <kbd>Ctrl</kbd>+<kbd>S</kbd> applies and saves · <kbd>Esc</kbd> cancels',
+  'help.head': 'Theme and global settings, between two <kbd>---</kbd> lines · <kbd>Ctrl</kbd>+<kbd>S</kbd> saves to the file · <kbd>Esc</kbd> cancels',
+};
+
+/** Portuguese translation; the key is the English text. */
+const PT = {
+  help: 'Arraste para reordenar · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+clique seleciona várias · ' +
+    '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> move a seleção · duplo clique edita · ' +
+    '<kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copia, recorta e cola lâminas, também entre abas ' +
+    '(ou arraste-as para uma aba) · <kbd>Ctrl</kbd>+<kbd>F</kbd> busca · <kbd>Ctrl</kbd>+<kbd>R</kbd> recarrega o arquivo ' +
+    'do disco · <kbd>Ctrl</kbd>+<kbd>O</kbd> abre outro arquivo · <span class="flag">⚠</span> indica lâmina cujo ' +
+    'efeito depende da posição (passe o mouse para ver).',
+  'help.slide': '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> aplica · <kbd>Ctrl</kbd>+<kbd>S</kbd> aplica e salva · <kbd>Esc</kbd> cancela',
+  'help.head': 'Tema e configurações globais, entre duas linhas <kbd>---</kbd> · <kbd>Ctrl</kbd>+<kbd>S</kbd> grava no arquivo · <kbd>Esc</kbd> cancela',
+  '+ Open': '+ Abrir',
+  'Open a file (Ctrl+O)': 'Abrir um arquivo (Ctrl+O)',
+  'Language': 'Idioma',
+  'Find…': 'Buscar…',
+  'Find slides by text (Ctrl+F)': 'Buscar lâminas por texto (Ctrl+F)',
+  'Size': 'Tamanho',
+  '↶ Undo': '↶ Desfazer',
+  'Undo (Ctrl+Z)': 'Desfazer (Ctrl+Z)',
+  '↷ Redo': '↷ Refazer',
+  'Redo (Ctrl+Y)': 'Refazer (Ctrl+Y)',
+  'Duplicate': 'Duplicar',
+  'Duplicate selected (Ctrl+D)': 'Duplicar selecionadas (Ctrl+D)',
+  'Remove': 'Remover',
+  'Remove selected (Delete)': 'Remover selecionadas (Delete)',
+  'Front matter': 'Front-matter',
+  'Edit the front matter (theme and global settings)': 'Editar o front-matter (tema e configurações globais)',
+  'Compare…': 'Comparar…',
+  'Compare with another open file and merge slides': 'Comparar com outro arquivo aberto e mesclar lâminas',
+  'Discard': 'Descartar',
+  'Go back to what is saved in the file': 'Voltar ao que está gravado no arquivo',
+  'Save': 'Salvar',
+  'Save (rendering thumbnails…)': 'Salvar (gerando miniaturas…)',
+  'Write the changes to the file (Ctrl+S)': 'Gravar as alterações no arquivo (Ctrl+S)',
+  'Reload from disk (Ctrl+R)': 'Recarregar do disco (Ctrl+R)',
+  'Try again': 'Tentar de novo',
+  'marp-order has stopped. Start it again to continue.': 'O marp-order foi encerrado. Inicie-o novamente para continuar.',
+  'No file open.': 'Nenhum arquivo aberto.',
+  'Open a presentation…': 'Abrir uma apresentação…',
+  'Speaker notes': 'Notas do apresentador',
+  'Cancel': 'Cancelar',
+  'Apply': 'Aplicar',
+  'Open a presentation': 'Abrir uma apresentação',
+  'Close': 'Fechar',
+  'Recent': 'Recentes',
+  'Browse': 'Procurar',
+  'Go': 'Ir',
+  'Compare': 'Comparar',
+  'with': 'com',
+  'only differences': 'só as diferenças',
+  'Make the slides of this file match the other file': 'Deixar as lâminas deste arquivo iguais às do outro',
+  'Take all from other': 'Usar tudo do outro',
+  'Done': 'Concluir',
+  '(untitled)': '(sem título)',
+  '(empty slide)': '(lâmina vazia)',
+  'added': 'nova',
+  'edited': 'editada',
+  'Its thumbnail is rendered in the background.': 'A miniatura dela é gerada em segundo plano.',
+  'new': 'nova',
+  'was {0}': 'era {0}',
+  '{0} slide': '{0} lâmina',
+  '{0} slides': '{0} lâminas',
+  '{0} selected': '{0} selecionadas',
+  '{0} found': '{0} encontrada(s)',
+  'unsaved changes': 'alterações não salvas',
+  '{0} removed': '{0} removida(s)',
+  'This file was saved from another marp-order window.': 'Este arquivo foi salvo por outra janela do marp-order.',
+  'The file was changed outside marp-order.': 'O arquivo foi alterado fora do marp-order.',
+  'Warning: {0}. The slides may be split incorrectly — check the file before saving a new order.':
+    'Atenção: {0}. A divisão das lâminas pode estar incorreta — confira o arquivo antes de salvar uma nova ordem.',
+  'Thumbnails unavailable ({0}). Showing the slide text instead.': 'Miniaturas indisponíveis ({0}). Mostrando o texto das lâminas.',
+  'Directive that applies from this slide onwards: {0}. Moving this slide changes which slides are affected.':
+    'Diretiva que vale desta lâmina em diante: {0}. Mover esta lâmina muda quais lâminas são afetadas.',
+  'With headingDivider, the comment before the heading moves to the previous slide if this one stops being the first.':
+    'Com headingDivider, o comentário antes do título passa para a lâmina anterior se esta deixar de ser a primeira.',
+  'Slide {0}': 'Lâmina {0}',
+  'Save or discard your changes before editing the front matter.': 'Salve ou descarte as alterações antes de editar o front-matter.',
+  'updating…': 'atualizando…',
+  'no response from marp-order': 'sem resposta do marp-order',
+  'Slide preview': 'Pré-visualização da lâmina',
+  'The file was changed outside marp-order since it was opened.\n\nOK: overwrite it (a copy of the current file is kept).\nCancel: do not save.':
+    'O arquivo foi alterado fora do marp-order desde que foi aberto.\n\nOK: sobrescrever (uma cópia do arquivo atual é guardada).\nCancelar: não salvar.',
+  'Front matter saved.': 'Front-matter salvo.',
+  'Discard the changes?': 'Descartar as alterações?',
+  '{0} slide(s) will be removed from the file. Continue?': '{0} lâmina(s) serão removidas do arquivo. Continuar?',
+  'Could not reach marp-order.': 'Não foi possível falar com o marp-order.',
+  'The file was saved from another marp-order window since it was loaded here.\n\nOK: overwrite it with what you see here (a copy of the current file is kept).\nCancel: do not save.':
+    'O arquivo foi salvo por outra janela do marp-order depois de carregado aqui.\n\nOK: sobrescrever com o que você vê aqui (uma cópia do arquivo atual é guardada).\nCancelar: não salvar.',
+  'The file was changed outside marp-order since it was loaded here.\n\nOK: overwrite it with what you see here (a copy of the current file is kept).\nCancel: do not save.':
+    'O arquivo foi alterado fora do marp-order depois de carregado aqui.\n\nOK: sobrescrever com o que você vê aqui (uma cópia do arquivo atual é guardada).\nCancelar: não salvar.',
+  'Could not save: {0}': 'Erro ao salvar: {0}',
+  'File saved. Backup of the original: {0}': 'Arquivo salvo. Backup do original: {0}',
+  'Reloading discards your unsaved changes. Continue?': 'Recarregar descarta as alterações ainda não salvas. Continuar?',
+  'Could not reload: {0}': 'Erro ao recarregar: {0}',
+  'File reloaded from disk.': 'Arquivo recarregado do disco.',
+  '{0} copied. Ctrl+V pastes, in this or another tab.': '{0} copiada(s). Ctrl+V cola, nesta ou em outra aba.',
+  '{0} cut. Ctrl+V pastes, in this or another tab.': '{0} recortada(s). Ctrl+V cola, nesta ou em outra aba.',
+  'This file has no slides to paste next to.': 'Este arquivo não tem lâminas ao lado das quais colar.',
+  '{0} has no slides to add next to.': '{0} não tem lâminas ao lado das quais acrescentar.',
+  '{0} copied to the end of {1}.': '{0} copiada(s) para o fim de {1}.',
+  'Close this file': 'Fechar este arquivo',
+  '{0} has unsaved changes. Close it anyway?': '{0} tem alterações não salvas. Fechar mesmo assim?',
+  'Nothing yet.': 'Nada ainda.',
+  '{0} different': '{0} diferente(s)',
+  '{0} only here': '{0} só aqui',
+  '{0} only in the other': '{0} só no outro',
+  'Both files have the same slides.': 'Os dois arquivos têm as mesmas lâminas.',
+  'different': 'diferente',
+  'only here': 'só aqui',
+  'only in the other': 'só no outro',
+  '← Use other': '← Usar o outro',
+  'Replace this slide with the one from the other file': 'Trocar esta lâmina pela do outro arquivo',
+  'Show what differs': 'Mostrar o que difere',
+  'Remove this slide from this file': 'Remover esta lâmina deste arquivo',
+  '← Add': '← Acrescentar',
+  'Copy this slide into this file, at this position': 'Copiar esta lâmina para este arquivo, nesta posição',
+  'The front matter (theme and global settings) differs. It is not merged: use the Front matter button to edit it.':
+    'O front-matter (tema e configurações globais) é diferente. Ele não é mesclado: use o botão Front-matter para editá-lo.',
+  'That file is no longer open.': 'Esse arquivo não está mais aberto.',
+};
+
+/** Text of `key` in language `lang`, with `{0}`, `{1}`… replaced by the arguments. */
+function translate(lang, key, args) {
+  const text = (lang === 'pt' ? PT[key] : undefined) ?? EN[key] ?? key;
+  return text.replace(/\{(\d)\}/g, (_, n) => args[n]);
 }
 
 // </pure>
@@ -438,19 +573,22 @@ function matchesQuery(text, query) {
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid'), bar = $('#bar');
 
-let tabs = [];           // arquivos abertos: [{doc, file, path}] + estado guardado ao trocar de aba
-let cur = null;          // aba ativa; as variáveis abaixo são o estado dela
-let S = null;            // estado vindo do servidor
-let items = [];          // ordem atual: [{k: chave do cartão, id: lâmina, text: se editada}]
-let sel = new Set();     // chaves selecionadas
-let anchor = null;       // último cartão clicado
+let tabs = [];           // open files: [{doc, file, dir, path}] + the state kept when switching tabs
+let cur = null;          // active tab; the variables below are its state
+let S = null;            // state from the server
+let items = [];          // current order: [{k: card key, id: slide, text: if edited}]
+let sel = new Set();     // selected keys
+let anchor = null;       // last clicked card
 let undo = [], redo = [];
 let nextKey = 1;
 let offline = false;
-let query = '';          // texto da busca
-let clip = null;         // lâminas copiadas: {doc, texts}
-const draftKeys = new Map();   // texto de lâmina não salva -> chave da miniatura no servidor
-const cards = new Map(); // chave -> elemento
+let lang = 'en';         // interface language: 'en' or 'pt'
+const t = (key, ...args) => translate(lang, key, args);
+const slidesN = (n) => (n === 1 ? t('{0} slide', n) : t('{0} slides', n));
+let query = '';          // search text
+let clip = null;         // copied slides: {doc, texts}
+const draftKeys = new Map();   // text of an unsaved slide -> key of its thumbnail on the server
+const cards = new Map(); // key -> element
 
 const post = (url, body) => fetch(url, {
   method: 'POST',
@@ -471,7 +609,7 @@ const dirtyOf = (state, list) => !!state &&
   (!sameOrder(list.map((it) => it.id), state.disk_order) || list.some((it) => it.text != null));
 const isDirty = () => dirtyOf(S, items);
 const tabDirty = (tab) => (tab === cur ? isDirty() : dirtyOf(tab.S, tab.items || []));
-/** Quantas lâminas do arquivo não estão mais na lista. */
+/** How many slides of the file are no longer in the list. */
 const removedCount = () => S.disk_order.filter((id) => !items.some((it) => it.id === id && !it.fresh)).length;
 const textOf = (item) => item.text ?? S.slides[item.id].text;
 const entry = (item) => (item.text == null ? { id: item.id } : { id: item.id, text: item.text });
@@ -506,7 +644,7 @@ function thumbSrc(id) {
   return `/thumb/${cur.doc}/${id}?g=${S.generation}&v=${S.thumbs.version}`;
 }
 
-/** Miniatura do item: a do disco ou, se ele foi editado, a do rascunho quando estiver pronta. */
+/** Thumbnail of the item: the one on disk or, if it was edited, the draft one once it is ready. */
 function faceSrc(item) {
   if (item.text != null) {
     const key = draftKeys.get(item.text);
@@ -517,7 +655,7 @@ function faceSrc(item) {
 }
 
 let draftTimer = null;
-/** Pede ao servidor, em segundo plano, as miniaturas das lâminas editadas ou acrescentadas. */
+/** Asks the server, in the background, for the thumbnails of edited or added slides. */
 function requestDrafts() {
   clearTimeout(draftTimer);
   draftTimer = setTimeout(async () => {
@@ -554,7 +692,9 @@ function makeCard(item) {
     const flag = document.createElement('span');
     flag.className = 'flag';
     flag.textContent = '⚠';
-    flag.title = slide.warn.join('\n');
+    flag.title = slide.warn.map((warn) => (warn.kind === 'directives'
+      ? t('Directive that applies from this slide onwards: {0}. Moving this slide changes which slides are affected.', warn.names.join(', '))
+      : t('With headingDivider, the comment before the heading moves to the previous slide if this one stops being the first.'))).join('\n');
     foot.append(flag);
   }
   foot.append(was);
@@ -562,24 +702,24 @@ function makeCard(item) {
   return el;
 }
 
-/** Atualiza título e face do cartão; a face só é refeita quando o conteúdo muda. */
+/** Updates the title and face of the card; the face is only rebuilt when the content changes. */
 function paint(el, item) {
   const text = titleOf(item);
   const title = el.querySelector('.title');
-  title.textContent = text || '(untitled)';
+  title.textContent = text || t('(untitled)');
   title.title = text;
   title.classList.toggle('empty', !text);
   el.classList.toggle('changed', item.text != null);
 
   const face = el.querySelector('.face');
   const src = faceSrc(item);
-  const key = src + '\n' + (item.text ?? '');
+  const key = lang + src + '\n' + (item.text ?? '');
   if (face.dataset.key === key) return;
   face.dataset.key = key;
   const badge = document.createElement('span');
   badge.className = 'edited';
-  badge.textContent = item.fresh ? 'added' : 'edited';
-  badge.title = 'The thumbnail is refreshed when you save.';
+  badge.textContent = item.fresh ? t('added') : t('edited');
+  badge.title = t('Its thumbnail is rendered in the background.');
   let content;
   if (src) {
     content = document.createElement('img');
@@ -587,7 +727,7 @@ function paint(el, item) {
   } else {
     content = document.createElement('div');
     content.className = 'text';
-    content.textContent = textOf(item).slice(0, 600) || '(empty slide)';
+    content.textContent = textOf(item).slice(0, 600) || t('(empty slide)');
   }
   face.replaceChildren(content, badge);
 }
@@ -604,7 +744,7 @@ function render() {
     el.querySelector('.num').textContent = i + 1;
     const origin = item.fresh ? -1 : S.disk_order.indexOf(item.id);
     const was = el.querySelector('.was');
-    was.textContent = origin < 0 ? 'new' : origin !== i ? `was ${origin + 1}` : '';
+    was.textContent = origin < 0 ? t('new') : origin !== i ? t('was {0}', origin + 1) : '';
     el.classList.toggle('dim', !!query && !matchesQuery(titleOf(item) + '\n' + textOf(item), query));
     if (grid.children[i + 1] !== el) grid.insertBefore(el, grid.children[i + 1] || null);
   });
@@ -617,12 +757,12 @@ function renderSel() {
   const dirty = isDirty();
   const removed = removedCount();
   const info = $('#info');
-  info.textContent = `${items.length} slide${items.length === 1 ? '' : 's'}` + (sel.size > 1 ? ` · ${sel.size} selected` : '');
-  if (query) info.textContent += ` · ${grid.querySelectorAll('.card:not(.dim)').length} found`;
+  info.textContent = slidesN(items.length) + (sel.size > 1 ? ' · ' + t('{0} selected', sel.size) : '');
+  if (query) info.textContent += ' · ' + t('{0} found', grid.querySelectorAll('.card:not(.dim)').length);
   if (dirty) {
     const mark = document.createElement('span');
     mark.className = 'dirty';
-    mark.textContent = ' · unsaved changes' + (removed ? ` (${removed} removed)` : '');
+    mark.textContent = ' · ' + t('unsaved changes') + (removed ? ` (${t('{0} removed', removed)})` : '');
     info.append(mark);
   }
   $('#save').disabled = !dirty;
@@ -636,20 +776,20 @@ function renderSel() {
 function showStatus(status) {
   $('#external').hidden = !(status.external_change || S.stale);
   $('#external span').textContent = S.stale
-    ? 'This file was saved from another marp-order window.'
-    : 'The file was changed outside marp-order.';
-  const t = status.thumbs;
-  $('#mismatch').hidden = t.state !== 'mismatch';
-  $('#mismatch span').textContent = 'Warning: ' + t.message +
-    '. The slides may be split incorrectly — check the file before saving a new order.';
-  $('#thumbnote').hidden = t.state !== 'error';
-  $('#thumbnote span').textContent = 'Thumbnails unavailable (' + t.message + '). Showing the slide text instead.';
-  $('#save').textContent = t.state === 'rendering' ? 'Save (rendering thumbnails…)' : 'Save';
+    ? t('This file was saved from another marp-order window.')
+    : t('The file was changed outside marp-order.');
+  const th = status.thumbs;
+  $('#mismatch').hidden = th.state !== 'mismatch';
+  $('#mismatch span').textContent =
+    t('Warning: {0}. The slides may be split incorrectly — check the file before saving a new order.', th.message);
+  $('#thumbnote').hidden = th.state !== 'error';
+  $('#thumbnote span').textContent = t('Thumbnails unavailable ({0}). Showing the slide text instead.', th.message);
+  $('#save').textContent = th.state === 'rendering' ? t('Save (rendering thumbnails…)') : t('Save');
 }
 
-// ---- operações sobre a ordem -------------------------------------------
+// ---- operations on the order -------------------------------------------------
 
-/** Move as lâminas selecionadas para a posição `at`, contada entre as não selecionadas. */
+/** Moves the selected slides to position `at`, counted among the unselected ones. */
 function moveSelection(at) {
   const moving = selected();
   const rest = items.filter((it) => !sel.has(it.k));
@@ -704,7 +844,7 @@ function select(k, event) {
   renderSel();
 }
 
-// ---- arrastar e soltar ---------------------------------------------------
+// ---- drag and drop -----------------------------------------------------------
 
 function dropIndex(x, y) {
   let n = 0;
@@ -773,7 +913,7 @@ grid.addEventListener('dblclick', (e) => {
   if (el) openEditor(items.find((it) => it.k === Number(el.dataset.k)));
 });
 
-// ---- editor de lâmina e do front-matter --------------------------------------
+// ---- slide and front-matter editor -------------------------------------------
 
 const editor = $('#editor'), edtext = $('#edtext'), ednotes = $('#ednotes'), edview = $('#edview');
 let editing = null;      // {mode: 'slide' | 'head', k, initial, body, notes, busy, again}
@@ -782,7 +922,7 @@ function showEditor(title, help) {
   $('#edtitle').textContent = title;
   $('#edhelp').innerHTML = help;
   editor.classList.toggle('head', editing.mode === 'head');
-  $('#edapply').textContent = editing.mode === 'head' ? 'Save' : 'Apply';
+  $('#edapply').textContent = editing.mode === 'head' ? t('Save') : t('Apply');
   edview.replaceChildren();
   editor.showModal();
   paintEditor();
@@ -797,21 +937,19 @@ function openEditor(item) {
   editing = { mode: 'slide', k: item.k, initial, ...splitNotes(initial) };
   edtext.value = editing.body;
   ednotes.value = editing.notes;
-  showEditor(`Slide ${items.indexOf(item) + 1}`,
-    '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> applies · <kbd>Ctrl</kbd>+<kbd>S</kbd> applies and saves · <kbd>Esc</kbd> cancels');
+  showEditor(t('Slide {0}', items.indexOf(item) + 1), t('help.slide'));
 }
 
-/** O front-matter vale para o arquivo todo e é gravado na hora, sem passar pelo histórico. */
+/** The front matter applies to the whole file and is written at once, outside the history. */
 function openHead() {
-  if (isDirty()) return toast('Save or discard your changes before editing the front matter.');
+  if (isDirty()) return toast(t('Save or discard your changes before editing the front matter.'));
   editing = { mode: 'head', initial: S.head.trim() };
   edtext.value = editing.initial;
   ednotes.value = '';
-  showEditor('Front matter', 'Theme and global settings, between two <kbd>---</kbd> lines · ' +
-    '<kbd>Ctrl</kbd>+<kbd>S</kbd> saves to the file · <kbd>Esc</kbd> cancels');
+  showEditor(t('Front matter'), t('help.head'));
 }
 
-/** Texto em edição; sem alterações, devolve o original byte a byte (as notas não mudam de lugar). */
+/** Text being edited; unchanged, it returns the original byte for byte (notes stay where they were). */
 function editedText() {
   if (editing.mode === 'head') return edtext.value.trim();
   if (edtext.value === editing.body && ednotes.value === editing.notes) return editing.initial;
@@ -829,13 +967,13 @@ function edStatus(message, isError) {
   el.classList.toggle('error', !!isError);
 }
 
-/** Pede ao servidor o rascunho renderizado; nunca há mais de um pedido em andamento. */
+/** Asks the server for the rendered draft; there is never more than one request in flight. */
 async function refreshPreview() {
   const session = editing;
   if (!session) return;
   if (session.busy) { session.again = true; return; }
   session.busy = true;
-  edStatus('updating…');
+  edStatus(t('updating…'));
   try {
     const request = { doc: cur.doc, generation: S.generation };
     if (session.mode === 'head') {
@@ -853,17 +991,17 @@ async function refreshPreview() {
       else edStatus(body.error, true);
     }
   } catch {
-    if (editing === session) edStatus('no response from marp-order', true);
+    if (editing === session) edStatus(t('no response from marp-order'), true);
   }
   session.busy = false;
   if (editing === session && session.again) { session.again = false; refreshPreview(); }
 }
 
-/** Carrega a nova versão por baixo e só então troca, para a lâmina não piscar. */
+/** Loads the new version underneath and only then swaps, so the slide does not flicker. */
 function showPreview(src) {
   const next = document.createElement('iframe');
   next.className = 'loading';
-  next.title = 'Slide preview';
+  next.title = t('Slide preview');
   next.onload = () => {
     for (const old of [...edview.children]) if (old !== next) old.remove();
     next.classList.remove('loading');
@@ -885,21 +1023,20 @@ async function saveHead(force) {
     res = await post('/api/head', { doc: tab.doc, head: editedText(), force: !!force });
     body = await res.json();
   } catch {
-    return edStatus('no response from marp-order', true);
+    return edStatus(t('no response from marp-order'), true);
   }
   if (editing !== session || cur !== tab) return;
   if (res.status === 409) {
-    if (confirm('The file was changed outside marp-order since it was opened.\n\n' +
-        'OK: overwrite it (a copy of the current file is kept).\nCancel: do not save.')) return saveHead(true);
+    if (confirm(t('The file was changed outside marp-order since it was opened.\n\nOK: overwrite it (a copy of the current file is kept).\nCancel: do not save.'))) return saveHead(true);
     return;
   }
   if (!res.ok) { session.error = body.error; return edStatus(body.error, true); }
   closeEditor();
   adopt(body);
-  toast('Front matter saved.');
+  toast(t('Front matter saved.'));
 }
 
-/** Aplica a edição; devolve `false` quando ela foi para o servidor (front-matter). */
+/** Applies the edit; returns `false` when it went to the server (front matter). */
 function applyEdit() {
   if (editing.mode === 'head') { saveHead(false); return false; }
   const k = editing.k, text = editedText();
@@ -913,7 +1050,7 @@ function applyEdit() {
 
 function cancelEdit() {
   const changed = editedText() !== editing.initial.trim();
-  if (!changed || confirm('Discard the changes?')) closeEditor();
+  if (!changed || confirm(t('Discard the changes?'))) closeEditor();
 }
 
 let edTimer = null;
@@ -932,7 +1069,7 @@ editor.addEventListener('keydown', (e) => {
   if (!(e.ctrlKey || e.metaKey)) return;
   const key = e.key.toLowerCase();
   if (key !== 'enter' && key !== 's') return;
-  // sem isto o atalho global de Ctrl+S salvaria uma segunda vez
+  // without this the global Ctrl+S shortcut would save a second time
   e.preventDefault();
   e.stopPropagation();
   if (applyEdit() && key === 's') save(false);
@@ -941,33 +1078,33 @@ $('#edapply').onclick = applyEdit;
 $('#edcancel').onclick = cancelEdit;
 $('#fm').onclick = openHead;
 
-// ---- servidor --------------------------------------------------------------
+// ---- server ------------------------------------------------------------------
 
 async function save(force) {
   if (!isDirty()) return;
   const tab = cur, saved = items;
   const removed = removedCount();
-  if (removed && !force && !confirm(`${removed} slide(s) will be removed from the file. Continue?`)) return;
+  if (removed && !force && !confirm(t('{0} slide(s) will be removed from the file. Continue?', removed))) return;
   let res;
   try {
     res = await post('/api/save', {
       doc: tab.doc, generation: S.generation, save_seq: S.save_seq, slides: saved.map(entry), force: !!force,
     });
   } catch {
-    return toast('Could not reach marp-order.');
+    return toast(t('Could not reach marp-order.'));
   }
   const body = await res.json();
-  if (cur !== tab) { tab.S = null; return; }   // trocou de aba: ela é relida ao voltar
+  if (cur !== tab) { tab.S = null; return; }   // switched tabs: it is re-read when the user comes back
   if (res.status === 409 && (body.error === 'external_change' || body.error === 'stale')) {
-    const who = body.error === 'stale' ? 'saved from another marp-order window' : 'changed outside marp-order';
-    if (confirm(`The file was ${who} since it was loaded here.\n\n` +
-        'OK: overwrite it with what you see here (a copy of the current file is kept).\n' +
-        'Cancel: do not save.')) return save(true);
+    const ask = body.error === 'stale'
+      ? t('The file was saved from another marp-order window since it was loaded here.\n\nOK: overwrite it with what you see here (a copy of the current file is kept).\nCancel: do not save.')
+      : t('The file was changed outside marp-order since it was loaded here.\n\nOK: overwrite it with what you see here (a copy of the current file is kept).\nCancel: do not save.');
+    if (confirm(ask)) return save(true);
     return;
   }
-  if (!res.ok) return toast('Could not save: ' + body.error);
+  if (!res.ok) return toast(t('Could not save: {0}', body.error));
   if (body.generation !== S.generation) {
-    // houve edição de conteúdo: o servidor releu o arquivo e renumerou as lâminas
+    // content was edited: the server re-read the file and renumbered the slides
     await rebase(tab, saved);
   } else {
     S.disk_order = body.disk_order;
@@ -977,10 +1114,10 @@ async function save(force) {
     render();
     showStatus(body);
   }
-  toast(`File saved. Backup of the original: ${body.backup.split('/').slice(-2).join('/')}`);
+  toast(t('File saved. Backup of the original: {0}', body.backup.split(/[\\/]/).slice(-2).join('/')));
 }
 
-/** Adota o arquivo regravado sem perder o histórico de desfazer nem a seleção. */
+/** Adopts the rewritten file without losing the undo history or the selection. */
 async function rebase(tab, saved) {
   const res = await fetch(`/api/state?doc=${tab.doc}`);
   if (!res.ok) return dropTab(tab);
@@ -990,7 +1127,7 @@ async function rebase(tab, saved) {
   const whole = saved.length === state.slides.length;
   undo = undo.map((list) => list.map(remap));
   redo = redo.map((list) => list.map(remap));
-  // o que acabou de ser gravado é, por definição, o que está no disco
+  // what was just written is, by definition, what is on disk
   items = whole ? saved.map((it, id) => ({ k: it.k, id })) : state.disk_order.map((id) => ({ k: nextKey++, id }));
   S = state;
   cards.forEach((el) => el.remove());
@@ -1000,14 +1137,14 @@ async function rebase(tab, saved) {
 }
 
 async function reload() {
-  if (isDirty() && !confirm('Reloading discards your unsaved changes. Continue?')) return;
+  if (isDirty() && !confirm(t('Reloading discards your unsaved changes. Continue?'))) return;
   const tab = cur;
   const res = await post('/api/reload', { doc: tab.doc });
   const body = await res.json();
   if (cur !== tab) return;
-  if (!res.ok) return toast('Could not reload: ' + body.error);
+  if (!res.ok) return toast(t('Could not reload: {0}', body.error));
   adopt(body);
-  toast('File reloaded from disk.');
+  toast(t('File reloaded from disk.'));
 }
 
 async function refetch(tab) {
@@ -1030,10 +1167,10 @@ async function poll() {
   }
   if (offline) { offline = false; $('#offline').hidden = true; }
   if (!tab || cur !== tab) return;
-  if (res.status === 404) return dropTab(tab);   // fechado em outra janela
+  if (res.status === 404) return dropTab(tab);   // closed in another window
   if (!S) return;
   if (status.generation !== S.generation || status.save_seq !== S.save_seq) {
-    // outra janela gravou este arquivo: sem nada pendente aqui, é só acompanhar
+    // another window wrote this file: with nothing pending here, just follow along
     if (isDirty() || editing) S.stale = true;
     else if (status.generation !== S.generation) return refetch(tab);
     else {
@@ -1054,7 +1191,7 @@ async function poll() {
   showStatus(status);
 }
 
-/** Texto de lâminas de outro arquivo, com os caminhos de imagem acertados para este. */
+/** Text of slides from another file, with the image paths adjusted for this one. */
 async function importTexts(from, to, texts) {
   if (from === to || !texts.length) return texts;
   try {
@@ -1064,14 +1201,13 @@ async function importTexts(from, to, texts) {
   return texts;
 }
 
-// ---- copiar, recortar, colar e buscar ---------------------------------------
+// ---- copy, cut, paste and find -----------------------------------------------
 
-/** Lâmina que não veio deste arquivo; `id` só indica de qual lâmina copiar o espaçamento. */
+/** A slide that did not come from this file; `id` only says which slide to copy the spacing from. */
 const foreignIn = (state, text) => ({ k: nextKey++, id: state.disk_order[0] ?? 0, text, fresh: true });
 const foreign = (text) => foreignIn(S, text);
 const withText = (item, text) => (text === S.slides[item.id].text && !item.fresh
   ? { k: item.k, id: item.id } : { ...item, text });
-const plural = (n) => `${n} slide${n === 1 ? '' : 's'}`;
 
 function copySelection(cut) {
   const texts = selected().map(textOf);
@@ -1079,12 +1215,13 @@ function copySelection(cut) {
   clip = { doc: cur.doc, texts };
   navigator.clipboard?.writeText(texts.join('\n\n---\n\n')).catch(() => {});
   if (cut) removeSelection();
-  toast(`${plural(texts.length)} ${cut ? 'cut' : 'copied'}. Ctrl+V pastes, in this or another tab.`);
+  const count = slidesN(texts.length);
+  toast(cut ? t('{0} cut. Ctrl+V pastes, in this or another tab.', count) : t('{0} copied. Ctrl+V pastes, in this or another tab.', count));
 }
 
 async function paste() {
   if (!clip) return;
-  if (!S.slides.length) return toast('This file has no slides to paste next to.');
+  if (!S.slides.length) return toast(t('This file has no slides to paste next to.'));
   const tab = cur;
   const texts = await importTexts(clip.doc, tab.doc, clip.texts);
   if (cur !== tab) return;
@@ -1095,7 +1232,7 @@ async function paste() {
   cards.get(fresh[0].k).scrollIntoView({ block: 'nearest' });
 }
 
-/** Copia lâminas para o fim de outra aba (arrastar sobre a aba), como alteração pendente dela. */
+/** Copies slides to the end of another tab (dragging onto the tab), as a pending change there. */
 async function copyToTab(tab, texts) {
   const from = cur.doc;
   if (!tab.S) {
@@ -1105,14 +1242,14 @@ async function copyToTab(tab, texts) {
     Object.assign(tab, { S: state, items: state.disk_order.map((id) => ({ k: nextKey++, id })),
       sel: new Set(), anchor: null, undo: [], redo: [] });
   }
-  if (!tab.S.slides.length) return toast(`${tab.file} has no slides to add next to.`);
+  if (!tab.S.slides.length) return toast(t('{0} has no slides to add next to.', tab.file));
   texts = await importTexts(from, tab.doc, texts);
   if (tab === cur) return;
   tab.undo.push(tab.items);
   tab.redo = [];
   tab.items = [...tab.items, ...texts.map((text) => foreignIn(tab.S, text))];
   renderTabs();
-  toast(`${plural(texts.length)} copied to the end of ${tab.file}.`);
+  toast(t('{0} copied to the end of {1}.', slidesN(texts.length), tab.file));
 }
 
 const find = $('#find');
@@ -1120,7 +1257,7 @@ find.addEventListener('input', () => { query = find.value.trim(); render(); });
 find.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { find.value = ''; query = ''; render(); find.blur(); }
   if (e.key !== 'Enter' || !query) return;
-  // Enter percorre os resultados
+  // Enter walks through the matches
   const hits = items.filter((it) => !cards.get(it.k).classList.contains('dim'));
   if (!hits.length) return;
   const at = hits.findIndex((it) => it.k === anchor);
@@ -1130,7 +1267,7 @@ find.addEventListener('keydown', (e) => {
   cards.get(next.k).scrollIntoView({ block: 'center' });
 });
 
-// ---- abas ------------------------------------------------------------------
+// ---- tabs --------------------------------------------------------------------
 
 function renderTabs() {
   const nav = $('#tabs');
@@ -1145,7 +1282,7 @@ function renderTabs() {
     const x = document.createElement('button');
     x.className = 'x';
     x.textContent = '×';
-    x.title = 'Close this file';
+    x.title = t('Close this file');
     x.onclick = (e) => { e.stopPropagation(); closeTab(tab); };
     el.onclick = () => { if (tab !== cur) activate(tab); };
     el.ondragover = (e) => { if (dragging && tab !== cur) { e.preventDefault(); el.classList.add('drop'); } };
@@ -1159,7 +1296,7 @@ function renderTabs() {
   $('#fm').disabled = !S;
 }
 
-/** Troca de aba, guardando na anterior a ordem, as edições e o histórico não salvos. */
+/** Switches tabs, keeping the unsaved order, edits and history in the previous one. */
 async function activate(tab) {
   if (cur) Object.assign(cur, { S, items, sel, anchor, undo, redo });
   cur = tab;
@@ -1190,12 +1327,12 @@ function dropTab(tab) {
 }
 
 async function closeTab(tab) {
-  if (tabDirty(tab) && !confirm(`${tab.file} has unsaved changes. Close it anyway?`)) return;
+  if (tabDirty(tab) && !confirm(t('{0} has unsaved changes. Close it anyway?', tab.file))) return;
   try { await post('/api/close', { doc: tab.doc }); } catch {}
   dropTab(tab);
 }
 
-// ---- abrir arquivo -----------------------------------------------------------
+// ---- open a file -------------------------------------------------------------
 
 const openDlg = $('#opener');
 
@@ -1219,17 +1356,14 @@ async function openDialog() {
   $('#operror').textContent = '';
   openDlg.showModal();
   const info = await (await fetch('/api/docs')).json();
-  const recent = info.recent.map((path) => {
-    const cut = path.lastIndexOf('/');
-    return fileButton(path.slice(cut + 1), path.slice(0, cut) || '/', () => openFile(path));
-  });
+  const recent = info.recent.map((file) => fileButton(file.file, file.dir, () => openFile(file.path)));
   if (!recent.length) {
     const none = document.createElement('li');
-    none.textContent = 'Nothing yet.';
+    none.textContent = t('Nothing yet.');
     recent.push(none);
   }
   $('#oprecent').replaceChildren(...recent);
-  browse(cur ? cur.path.replace(/\/[^/]*$/, '') || '/' : '');
+  browse(cur ? cur.dir : '');
 }
 
 async function browse(dir) {
@@ -1239,10 +1373,9 @@ async function browse(dir) {
   if (body.file) return openFile(body.file);
   $('#operror').textContent = '';
   $('#oppath').value = body.dir;
-  const base = body.dir.endsWith('/') ? body.dir : body.dir + '/';
   const list = body.entries.map((entry) => (entry.dir
-    ? fileButton('📁 ' + entry.name, '', () => browse(base + entry.name))
-    : fileButton(entry.name, '', () => openFile(base + entry.name))));
+    ? fileButton('📁 ' + entry.name, '', () => browse(entry.path))
+    : fileButton(entry.name, '', () => openFile(entry.path))));
   if (body.parent) list.unshift(fileButton('📁 ..', '', () => browse(body.parent)));
   $('#oplist').replaceChildren(...list);
 }
@@ -1264,10 +1397,10 @@ $('#opform').onsubmit = (e) => { e.preventDefault(); browse($('#oppath').value.t
 $('#opclose').onclick = () => openDlg.close();
 $('#open').onclick = $('#openempty').onclick = openDialog;
 
-// ---- comparar e mesclar ------------------------------------------------------
+// ---- compare and merge -------------------------------------------------------
 
 const differ = $('#differ');
-let other = null;        // estado (salvo em disco) do arquivo comparado
+let other = null;        // state (as saved on disk) of the file being compared
 
 const rightSlides = () => other.disk_order.map((id) => other.slides[id]);
 const diffRows = (right) => alignSlides(items.map((it) => ({ text: textOf(it), title: titleOf(it) })), right);
@@ -1282,20 +1415,20 @@ function mini(number, title, src, text) {
   } else {
     face = document.createElement('div');
     face.className = 'text';
-    face.textContent = text.slice(0, 500) || '(empty slide)';
+    face.textContent = text.slice(0, 500) || t('(empty slide)');
   }
   const foot = document.createElement('footer');
   const num = document.createElement('strong');
   num.textContent = number;
   const name = document.createElement('span');
   name.className = 'title';
-  name.textContent = title || '(untitled)';
+  name.textContent = title || t('(untitled)');
   foot.append(num, name);
   el.append(face, foot);
   return el;
 }
 
-/** Diferença linha a linha entre dois textos: o que só há aqui e o que só há no outro. */
+/** Line-by-line difference between two texts: what is only here and what is only in the other. */
 function diffBlock(label, mine, theirs) {
   const details = document.createElement('details');
   const summary = document.createElement('summary');
@@ -1318,9 +1451,9 @@ function renderDiff() {
   const right = rightSlides();
   const rows = diffRows(right);
   const count = (kind) => rows.filter((row) => row.kind === kind).length;
-  const parts = [[count('changed'), 'different'], [count('left'), 'only here'], [count('right'), 'only in the other']]
-    .filter(([n]) => n).map(([n, label]) => `${n} ${label}`);
-  $('#dfsummary').textContent = parts.length ? parts.join(' · ') : 'Both files have the same slides.';
+  const parts = [[count('changed'), '{0} different'], [count('left'), '{0} only here'], [count('right'), '{0} only in the other']]
+    .filter(([n]) => n).map(([n, label]) => t(label, n));
+  $('#dfsummary').textContent = parts.length ? parts.join(' · ') : t('Both files have the same slides.');
   $('#dfall').disabled = !parts.length || !S.slides.length;
 
   const leftCard = (l) => mini(l + 1, titleOf(items[l]), faceSrc(items[l]), textOf(items[l]));
@@ -1352,17 +1485,17 @@ function renderDiff() {
       el.append(leftCard(row.l), mid, rightCard(row.r));
     } else if (row.kind === 'changed') {
       const key = items[row.l].k;
-      mid.append('different', action('← Use other', 'Replace this slide with the one from the other file',
+      mid.append(t('different'), action(t('← Use other'), t('Replace this slide with the one from the other file'),
         async () => { const text = await theirs(row.r); commit(items.map((it) => (it.k === key ? withText(it, text) : it))); }));
       el.append(leftCard(row.l), mid, rightCard(row.r),
-        diffBlock('Show what differs', textOf(items[row.l]), right[row.r].text));
+        diffBlock(t('Show what differs'), textOf(items[row.l]), right[row.r].text));
     } else if (row.kind === 'left') {
       const key = items[row.l].k;
-      mid.append('only here', action('Remove', 'Remove this slide from this file',
+      mid.append(t('only here'), action(t('Remove'), t('Remove this slide from this file'),
         () => commit(items.filter((it) => it.k !== key))));
       el.append(leftCard(row.l), mid, blank());
     } else {
-      mid.append('only in the other', action('← Add', 'Copy this slide into this file, at this position',
+      mid.append(t('only in the other'), action(t('← Add'), t('Copy this slide into this file, at this position'),
         async () => { const text = await theirs(row.r); commit([...items.slice(0, row.at), foreign(text), ...items.slice(row.at)]); }));
       el.append(blank(), mid, rightCard(row.r));
     }
@@ -1371,14 +1504,14 @@ function renderDiff() {
   if (norm(S.head) !== norm(other.head)) {
     const el = document.createElement('div');
     el.className = 'dfrow head';
-    el.append('The front matter (theme and global settings) differs. It is not merged: use the Front matter button to edit it.',
-      diffBlock('Show what differs', S.head, other.head));
+    el.append(t('The front matter (theme and global settings) differs. It is not merged: use the Front matter button to edit it.'),
+      diffBlock(t('Show what differs'), S.head, other.head));
     list.unshift(el);
   }
   $('#dfrows').replaceChildren(...list);
 }
 
-/** Deixa as lâminas desta aba iguais às do outro arquivo, em um único passo desfazível. */
+/** Makes the slides of this tab match the other file, in a single undoable step. */
 async function takeAll() {
   const right = rightSlides(), rows = diffRows(right), base = items;
   const wanted = rows.filter((row) => row.kind === 'changed' || row.kind === 'right');
@@ -1396,7 +1529,7 @@ async function takeAll() {
 
 async function loadOther() {
   const res = await fetch(`/api/state?doc=${$('#dfother').value}`);
-  if (!res.ok) { other = null; $('#dfrows').replaceChildren(); $('#dfsummary').textContent = 'That file is no longer open.'; return; }
+  if (!res.ok) { other = null; $('#dfrows').replaceChildren(); $('#dfsummary').textContent = t('That file is no longer open.'); return; }
   other = await res.json();
   renderDiff();
 }
@@ -1424,7 +1557,7 @@ $('#dfall').onclick = takeAll;
 $('#dfundo').onclick = () => { stepHistory(undo, redo); renderDiff(); };
 $('#dfclose').onclick = () => differ.close();
 
-// ---- controles ---------------------------------------------------------------
+// ---- controls ----------------------------------------------------------------
 
 $('#save').onclick = () => save(false);
 $('#undo').onclick = () => stepHistory(undo, redo);
@@ -1434,6 +1567,32 @@ $('#del').onclick = removeSelection;
 $('#discard').onclick = () => commit(S.disk_order.map((id) => ({ k: nextKey++, id })));
 $('#reload').onclick = reload;
 $('#rethumb').onclick = () => post('/api/rethumb', { doc: cur.doc }).then(poll);
+
+/** Puts the fixed texts of the page in the current language and redraws what depends on it. */
+function applyLang() {
+  document.documentElement.lang = lang === 'pt' ? 'pt-BR' : 'en';
+  document.querySelectorAll('[data-t]').forEach((el) => { el.innerHTML = t(el.dataset.t); });
+  document.querySelectorAll('[data-tt]').forEach((el) => { el.title = t(el.dataset.tt); });
+  document.querySelectorAll('[data-tp]').forEach((el) => { el.placeholder = t(el.dataset.tp); });
+  $('#save').textContent = t('Save');
+  if (!S) return renderTabs();
+  // the warnings on the cards are built when the cards are created
+  cards.forEach((el) => el.remove());
+  cards.clear();
+  render();
+  showStatus(S);
+}
+
+const langSel = $('#lang');
+try { lang = localStorage.getItem('marp-order-lang') || ''; } catch {}
+if (lang !== 'en' && lang !== 'pt') lang = (navigator.language || '').toLowerCase().startsWith('pt') ? 'pt' : 'en';
+langSel.value = lang;
+langSel.onchange = () => {
+  lang = langSel.value;
+  try { localStorage.setItem('marp-order-lang', lang); } catch {}
+  applyLang();
+};
+applyLang();
 
 const size = $('#size');
 const applySize = () => document.documentElement.style.setProperty('--w', size.value + 'px');
@@ -1451,7 +1610,7 @@ document.addEventListener('keydown', (e) => {
   if (mod && key === 'o') { e.preventDefault(); return openDialog(); }
   if (!S) return;
   if (mod && key === 'f') { e.preventDefault(); find.focus(); return find.select(); }
-  if (e.target === find) return;   // na busca, as teclas são texto
+  if (e.target === find) return;   // in the search box, keys are text
   let handled = true;
   if (mod && key === 's') save(false);
   else if (mod && key === 'z' && !e.shiftKey) stepHistory(undo, redo);

@@ -1,11 +1,11 @@
-//! Leitura e reescrita de um arquivo Marp.
+//! Reading and rewriting a Marp file.
 //!
-//! O arquivo é dividido em um cabeçalho fixo (BOM + front-matter) e uma lista
-//! de lâminas. Cada lâmina guarda o seu texto exatamente como está no arquivo,
-//! de modo que reordenar só move blocos de texto, sem reformatar nada.
+//! The file is split into a fixed head (BOM + front matter) and a list of slides.
+//! Each slide keeps its text exactly as it is in the file, so reordering only moves
+//! blocks of text and never reformats anything.
 
-/// Diretivas que, escritas sem `_`, valem para a lâmina e todas as seguintes
-/// (ou para o deck inteiro). Mover uma lâmina que as contém muda o resultado.
+/// Directives that, written without `_`, apply to the slide and all the following ones
+/// (or to the whole deck). Moving a slide that has them changes the result.
 const FORWARD_DIRECTIVES: &[&str] = &[
     "paginate",
     "header",
@@ -28,13 +28,13 @@ const FORWARD_DIRECTIVES: &[&str] = &[
 use std::borrow::Cow;
 
 pub struct Slide {
-    /// Linha separadora (`---`) que precedia a lâmina no arquivo, com a quebra de linha.
+    /// Separator line (`---`) that preceded the slide in the file, with its line break.
     pub lead: Option<String>,
     pub text: String,
-    /// Começa por um título de `headingDivider`, que abre a lâmina sozinho, sem `---`.
+    /// Starts with a `headingDivider` heading, which opens the slide by itself, without `---`.
     pub heading_start: bool,
-    /// Primeira lâmina com comentário antes do título divisor: se ela sair do início,
-    /// o Marp passa esse comentário para a lâmina anterior.
+    /// First slide with a comment before the divider heading: if it leaves the start,
+    /// Marp moves that comment to the previous slide.
     pub lead_comment: bool,
 }
 
@@ -46,7 +46,7 @@ pub struct Deck {
     newline: &'static str,
 }
 
-/// Uma posição do arquivo a montar: índice da lâmina e, se editada, o texto novo.
+/// One position of the file to compose: slide index and, if edited, the new text.
 pub type Entry = (usize, Option<String>);
 
 #[derive(PartialEq, Clone, Copy)]
@@ -56,7 +56,7 @@ enum Prev {
     Other,
 }
 
-/// Estado da leitura no início de um parágrafo, para o caso de ele virar título setext.
+/// Reading state at the start of a paragraph, in case it turns into a setext heading.
 #[derive(Clone, Copy, Default)]
 struct Mark {
     at: usize,
@@ -88,8 +88,8 @@ impl Builder<'_> {
         self.lead_comment = false;
     }
 
-    /// Título divisor em `mark.at`. Como no Marpit, ele abre uma lâmina nova se já houve
-    /// qualquer conteúdo visível no deck (comentários não contam).
+    /// Divider heading at `mark.at`. As in Marpit, it opens a new slide if there has been
+    /// any visible content in the deck (comments do not count).
     fn heading(&mut self, mark: Mark) {
         if mark.seen_visible {
             self.cut(mark.at, mark.at, None, true);
@@ -100,7 +100,7 @@ impl Builder<'_> {
     }
 }
 
-/// Divide `source` em lâminas a partir de `head_len`, seguindo as regras do Marpit.
+/// Splits `source` into slides from `head_len` on, following Marpit's rules.
 fn scan(source: &str, head_len: usize, divider: &[u8]) -> Vec<Slide> {
     let mut b = Builder {
         source,
@@ -111,10 +111,10 @@ fn scan(source: &str, head_len: usize, divider: &[u8]) -> Vec<Slide> {
         lead_comment: false,
     };
     let mut prev = Prev::Blank;
-    let mut container = false; // dentro de lista ou citação
-    let mut seen_visible = false; // algum conteúdo visível no deck até aqui
+    let mut container = false; // inside a list or block quote
+    let mut seen_visible = false; // some visible content in the deck so far
     let mut slide_visible = false;
-    let mut slide_text = false; // a lâmina atual tem alguma linha não vazia
+    let mut slide_text = false; // the current slide has a non-empty line
     let mut para = Mark::default();
     let mut fence: Option<(char, usize)> = None;
     let mut raw_end: Option<&'static str> = None;
@@ -156,7 +156,7 @@ fn scan(source: &str, head_len: usize, divider: &[u8]) -> Vec<Slide> {
         }
         slide_text = true;
         if indent >= 4 && !container {
-            // código indentado ou continuação de parágrafo: nunca separa
+            // indented code or paragraph continuation: never a separator
             seen_visible = true;
             slide_visible = true;
             if prev != Prev::Para {
@@ -173,7 +173,7 @@ fn scan(source: &str, head_len: usize, divider: &[u8]) -> Vec<Slide> {
                 continue;
             }
             if ch == '-' && pure && setext_ok {
-                // sublinhado de título setext (`Título\n---`), não é separador
+                // underline of a setext heading (`Title\n---`), not a separator
                 if divider.contains(&2) {
                     b.heading(para);
                 }
@@ -207,7 +207,7 @@ fn scan(source: &str, head_len: usize, divider: &[u8]) -> Vec<Slide> {
             prev = Prev::Other;
             continue;
         }
-        // daqui em diante toda linha é conteúdo visível
+        // from here on every line is visible content
         seen_visible = true;
         slide_visible = true;
 
@@ -260,10 +260,10 @@ impl Deck {
         }
     }
 
-    /// Monta o arquivo com as lâminas na ordem dada. Cada entrada é o índice da lâmina
-    /// em `slides` (pode faltar ou repetir) e, se ela foi editada, o texto novo.
-    /// A ordem original sem edições devolve o arquivo byte a byte, e pares de lâminas
-    /// intactas que já eram vizinhas não são tocados.
+    /// Composes the file with the slides in the given order. Each entry is the index of a
+    /// slide in `slides` (may be missing or repeated) and, if it was edited, the new text.
+    /// The original order without edits returns the file byte for byte, and pairs of
+    /// untouched slides that were already neighbours are left alone.
     pub fn compose(&self, entries: &[Entry]) -> String {
         let n = self.slides.len();
         let untouched = entries.iter().all(|(_, edit)| edit.is_none());
@@ -285,7 +285,7 @@ impl Deck {
             if pos == 0 {
                 let first_line = text.lines().next();
                 if out.is_empty() && first_line.map_or(true, |l| l.trim_end() == "---") {
-                    // sem front-matter, um `---` na primeira linha viraria front-matter
+                    // without front matter, a `---` on the first line would become front matter
                     out.push_str(self.newline);
                 }
                 out.push_str(&text);
@@ -299,7 +299,7 @@ impl Deck {
                 out.push_str(&text);
                 continue;
             }
-            // Sem linha em branco antes, `texto\n---` viraria um título setext.
+            // Without a blank line before it, `text\n---` would become a setext heading.
             self.ensure_blank_line(&mut out);
             if !heading_start {
                 match &slide.lead {
@@ -318,7 +318,7 @@ impl Deck {
         }
         if let Some((last, edit)) = entries.last() {
             if *last != n - 1 || edit.is_some() {
-                // mantém o final do arquivo (quebra de linha final ou não) como estava
+                // keep the end of the file (trailing line break or not) as it was
                 let tail = &self.source[self.source.trim_end().len()..];
                 let keep = out.trim_end().len().max(self.head.len());
                 out.truncate(keep);
@@ -328,8 +328,8 @@ impl Deck {
         out
     }
 
-    /// Texto de uma lâmina editada: o conteúdo novo com as linhas em branco que
-    /// cercavam o original e as quebras de linha no estilo do arquivo.
+    /// Text of an edited slide: the new content with the blank lines that surrounded
+    /// the original and line breaks in the file's style.
     fn rewrap(&self, slide: &Slide, body: &str) -> String {
         let original = slide.text.as_str();
         let start = original.len() - original.trim_start().len();
@@ -350,7 +350,7 @@ impl Deck {
         text
     }
 
-    /// Número de lâminas que o arquivo montado com `entries` teria.
+    /// Number of slides the file composed from `entries` would have.
     pub fn count(&self, entries: &[Entry]) -> usize {
         let text = self.compose(entries);
         scan(&text, self.head.len().min(text.len()), &self.divider).len()
@@ -371,7 +371,7 @@ impl Deck {
     }
 }
 
-/// Título de exibição: primeiro título da lâmina ou, na falta, a primeira linha de texto.
+/// Display title: the first heading of the slide or, failing that, the first line of text.
 pub fn title(text: &str) -> String {
     let mut in_comment = false;
     let mut fallback = None;
@@ -406,7 +406,7 @@ fn clean_inline(s: &str) -> String {
         .to_string()
 }
 
-/// Diretivas da lâmina cujo efeito se estende às lâminas seguintes.
+/// Directives of the slide whose effect extends to the following slides.
 pub fn forward_directives(text: &str) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
     let mut rest = text;
@@ -445,7 +445,7 @@ fn front_matter_len(source: &str) -> usize {
     }
 }
 
-/// Níveis de título que iniciam lâmina (`headingDivider`), do front-matter ou de um comentário.
+/// Heading levels that start a slide (`headingDivider`), from the front matter or a comment.
 fn heading_divider(head: &str, body: &str) -> Vec<u8> {
     let mut levels = Vec::new();
     for line in head.lines().chain(body.lines()) {
@@ -481,7 +481,7 @@ fn split_indent(line: &str) -> (usize, &str) {
     (cols, "")
 }
 
-/// Régua horizontal (`---`, `***`, `___`, `- - -`). O booleano indica se não há espaços internos.
+/// Thematic break (`---`, `***`, `___`, `- - -`). The boolean tells whether it has no inner spaces.
 fn thematic_break(rest: &str) -> Option<(char, bool)> {
     let ch = rest.chars().next()?;
     if !matches!(ch, '-' | '*' | '_') {
@@ -518,7 +518,7 @@ fn fence_closes(rest: &str, (ch, open): (char, usize)) -> bool {
     count >= open && rest[count..].trim().is_empty()
 }
 
-/// Blocos HTML que só terminam na marca de fechamento (podem conter `---` e linhas em branco).
+/// HTML blocks that only end at the closing mark (they may contain `---` and blank lines).
 fn raw_html_opens(rest: &str) -> Option<(usize, &'static str)> {
     if rest.starts_with("<!--") {
         return Some((4, "-->"));
@@ -582,7 +582,7 @@ mod tests {
         deck.slides.iter().map(|s| s.text.trim().to_string()).collect()
     }
 
-    /// Recompõe na ordem dada, relê e confere que as lâminas saíram na ordem pedida.
+    /// Composes in the given order, re-reads and checks the slides came out in that order.
     fn check_order(source: &str, order: &[usize]) {
         let deck = Deck::parse(source.to_string());
         let expected: Vec<String> = order
@@ -642,7 +642,7 @@ mod tests {
     #[test]
     fn neighbours_keep_their_original_bytes() {
         let deck = Deck::parse(BASIC.to_string());
-        // 1 e 2 continuam vizinhas: o trecho entre elas não muda
+        // 1 and 2 stay neighbours: the text between them does not change
         let out = reorder(&deck, &[1, 2, 0]);
         assert!(out.contains("- a\n- b\n\n---\n\n# Três\n\nfim\n"));
         assert!(out.ends_with("texto\n"));
@@ -715,7 +715,7 @@ mod tests {
     fn heading_divider_splits_on_headings() {
         let src = "---\nmarp: true\nheadingDivider: 2\n---\n\n# Capa\n\n## Um\n\ntexto\n\n### sub\n\n## Dois\n\n---\n\n## Três\nfim\n";
         let deck = Deck::parse(src.to_string());
-        // `---` seguido de título divisor gera uma lâmina vazia no Marp
+        // `---` followed by a divider heading yields an empty slide in Marp
         assert_eq!(
             texts(&deck),
             ["# Capa", "## Um\n\ntexto\n\n### sub", "## Dois", "", "## Três\nfim"]
@@ -766,7 +766,7 @@ mod tests {
         let deck = Deck::parse(BASIC.to_string());
         let out = deck.compose(&[(0, None), edit(1, "# Novo\n\ntexto novo\n\n"), (2, None)]);
         assert_eq!(out, BASIC.replace("# Dois\n\n- a\n- b", "# Novo\n\ntexto novo"));
-        // editar para o mesmo texto não muda nada
+        // editing to the same text changes nothing
         let same = deck.compose(&[(0, None), edit(1, "# Dois\n\n- a\n- b"), (2, None)]);
         assert_eq!(same, BASIC);
     }
@@ -788,7 +788,7 @@ mod tests {
         let out = deck.compose(&[edit(0, "texto"), edit(1, ""), edit(2, "fim")]);
         assert_eq!(texts(&Deck::parse(out.clone())), ["texto", "", "fim"]);
         assert!(!out.ends_with('\n'));
-        // sem front-matter, a primeira lâmina não pode começar por `---`
+        // without front matter, the first slide cannot start with `---`
         let first = deck.compose(&[edit(0, "---\nx: 1\n---\ny"), (1, None), (2, None)]);
         assert_eq!(Deck::parse(first).head, "");
     }
@@ -823,8 +823,8 @@ mod tests {
         assert!(forward_directives("<!-- _class: lead -->\nnota: class: x").is_empty());
     }
 
-    /// Confere a divisão em lâminas contra o marp-cli de verdade. Fica fora do `cargo test`
-    /// comum porque precisa do `marp` no PATH: `cargo test -- --ignored`.
+    /// Checks the slide splitting against the real marp-cli. It is outside the regular
+    /// `cargo test` because it needs `marp` in PATH: `cargo test -- --ignored`.
     #[test]
     #[ignore = "needs marp-cli in PATH"]
     fn slide_count_matches_marp_cli() {

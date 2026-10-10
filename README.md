@@ -22,28 +22,36 @@ without touching the content of the slides.
 - **No reformatting**: unedited slides are moved byte for byte; the front matter stays
   where it is.
 - **Safe**: automatic backup, atomic writes and detection of external edits.
+- **English and Portuguese** interface, switchable at any time.
 
 ## Requirements
 
 | For | You need |
 |---|---|
-| Building | [Rust](https://rustup.rs) 1.80 or newer |
+| Building from source | [Rust](https://rustup.rs) 1.80 or newer |
 | Thumbnails and live preview (optional) | [marp-cli](https://github.com/marp-team/marp-cli) and Chrome, Chromium or Edge |
 
 Without marp-cli the program still works, showing the text of each slide instead of a
-thumbnail; the editor opens, but without the preview. The browser is opened with
-`xdg-open` (Linux); on other systems, open the address printed in the terminal yourself.
+thumbnail; the editor opens, but without the preview.
+
+marp-order is developed and used on Linux. The macOS and Windows builds are compiled and
+run through the automated tests on every change, but have not been tried by hand; please
+open an issue if something misbehaves there.
 
 ## Installation
 
+**Prebuilt binaries** for Linux, macOS and Windows are attached to each
+[release](https://github.com/guiok/marp-order/releases): download the archive for your
+system, unpack it and put `marp-order` somewhere on your PATH.
+
+**From source**, with Rust installed:
+
 ```bash
-git clone https://github.com/guiok/marp-order.git
-cd marp-order
-cargo install --path .
+cargo install --git https://github.com/guiok/marp-order
 ```
 
-This installs the binary in `~/.cargo/bin`. Alternatively, `make install` builds it and
-copies it to `~/.local/bin`.
+This installs the binary in `~/.cargo/bin`. Inside a clone of the repository,
+`cargo install --path .` does the same and `make install` copies it to `~/.local/bin`.
 
 For thumbnails:
 
@@ -77,6 +85,7 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` |
 | Edit the content | double-click |
 | Discard changes | **Discard** button |
+| Switch between English and Portuguese | **EN / PT** selector, top right |
 | Save to the file | `Ctrl+S` |
 | Reload the file from disk | `Ctrl+R` |
 | Open another file | `Ctrl+O` or **+ Open** |
@@ -122,7 +131,8 @@ dot on the tab marks unsaved changes. Slides can be copied between tabs with
 
 The list of open files is remembered: running `marp-order` with no file reopens the tabs
 of the last session. Recent files and the session are stored in
-`~/.config/marp-order/` (or `$XDG_CONFIG_HOME/marp-order/`).
+`~/.config/marp-order/` (or `$XDG_CONFIG_HOME/marp-order/`; `%APPDATA%\marp-order` on
+Windows).
 
 ### Comparing and merging
 
@@ -214,7 +224,9 @@ marks the card with ⚠ so you can check.
 - **Local use.** The server only accepts connections from `127.0.0.1` and has no
   authentication; it is not meant to be exposed on a network.
 - **Preview port.** While the editor preview is in use, marp-cli's watch mode opens its
-  own WebSocket server on port 37717.
+  own WebSocket server for reload notifications on the first free port from 37717 up,
+  on all network interfaces. marp-cli has no option to change that. marp-order does not
+  use it and no deck content goes through it.
 
 ## Development
 
@@ -222,14 +234,16 @@ marks the card with ⚠ so you can check.
 make test     # parser, server and interface tests
 make build    # release binary in target/release/
 make                          # run it, reopening the last session
-make abrir DECK=presentation.md
+make run DECK=presentation.md
 ```
 
 The code structure and the slide-splitting rules are described in
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md) (in Portuguese). Contributions are welcome:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Contributions are welcome:
 when changing the parser, add a test to `src/deck.rs` and a case to
 `slide_count_matches_marp_cli`, which compares the slide count with the real marp-cli
-(`cargo test -- --ignored`). The same checks run on every push in GitHub Actions.
+(`cargo test -- --ignored`). The same checks run on every push in GitHub Actions, on
+Linux, macOS and Windows. Interface texts go through `t('…')`; a new one needs its
+Portuguese entry in the `PT` table of `src/ui.html`.
 
 ## License
 

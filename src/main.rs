@@ -50,42 +50,42 @@ struct Args {
     marp_extra: Vec<String>,
 }
 
-/// Um arquivo aberto (uma aba da interface).
+/// An open file (one tab of the interface).
 pub struct Doc {
     pub id: u64,
     pub path: PathBuf,
     deck: Deck,
-    /// Conteúdo que lemos ou gravamos por último; se o disco diferir, alguém mexeu no arquivo.
+    /// What we last read or wrote; if the disk differs, someone else touched the file.
     last_disk: Vec<u8>,
     last_meta: Option<(u64, SystemTime)>,
-    /// Ordem das lâminas (índices de `deck.slides`) atualmente gravada no arquivo.
+    /// Order of the slides (indices into `deck.slides`) currently written to the file.
     pub disk_order: Vec<usize>,
-    /// Muda a cada recarga do arquivo; invalida os índices conhecidos pelo navegador.
+    /// Changes whenever the file is re-read; invalidates the indices the browser knows.
     pub generation: u64,
     pub save_seq: u64,
     last_backup: Option<PathBuf>,
-    /// Pasta das miniaturas deste arquivo, uma por lâmina (`<id>.jpeg`).
+    /// Folder with this file's thumbnails, one per slide (`<id>.jpeg`).
     pub thumb_dir: PathBuf,
     pub has_thumb: Vec<bool>,
     pub thumb_version: u64,
     pub thumb_state: &'static str,
     pub thumb_msg: String,
-    /// Miniaturas de lâminas ainda não salvas (`d-<chave>.jpeg`), pela chave do texto.
+    /// Thumbnails of slides not saved yet (`d-<key>.jpeg`), by the key of their text.
     pub drafts: Vec<String>,
 }
 
 pub struct App {
-    /// Arquivos abertos, na ordem das abas.
+    /// Open files, in tab order.
     docs: Vec<Doc>,
     next_id: u64,
     tmp: PathBuf,
-    /// Pasta de configuração do usuário (recentes e sessão); ausente desliga os dois.
+    /// User configuration folder (recent files and session); `None` turns both off.
     config: Option<PathBuf>,
-    /// Estado inicial das miniaturas de um arquivo recém-aberto.
+    /// Initial thumbnail state of a file that was just opened.
     thumb_start: (&'static str, String),
-    /// Fila do gerador de miniaturas; ausente sem marp-cli ou com `--no-thumbs`.
+    /// Queue of the thumbnail renderer; `None` without marp-cli or with `--no-thumbs`.
     render: Option<Sender<Job>>,
-    /// Pré-visualização do editor; ausente quando não há marp-cli.
+    /// Editor preview; `None` when there is no marp-cli.
     preview: Option<Preview>,
 }
 
@@ -94,10 +94,10 @@ impl App {
         self.docs.iter_mut().find(|doc| doc.id == id)
     }
 
-    /// Abre o arquivo em uma aba nova, ou devolve a aba em que ele já está.
+    /// Opens the file in a new tab, or returns the tab it is already in.
     fn open(&mut self, file: &Path) -> Result<u64, String> {
-        // Caminho real: gravar por rename não pode trocar um link simbólico por um arquivo.
-        let path = fs::canonicalize(file)
+        // Real path: writing by rename must not replace a symbolic link with a file.
+        let path = real_path(file)
             .map_err(|e| format!("could not open {}: {e}", file.display()))?;
         if let Some(doc) = self.docs.iter().find(|doc| doc.path == path) {
             return Ok(doc.id);
@@ -137,7 +137,7 @@ impl App {
         }
     }
 
-    /// Guarda quais arquivos estão abertos, para reabri-los na próxima execução sem argumentos.
+    /// Remembers which files are open, to reopen them on the next run without arguments.
     fn remember_session(&self) {
         let files: Vec<String> = self.docs.iter().map(|doc| doc.path.display().to_string()).collect();
         self.write_list("session.json", &files);
@@ -147,7 +147,7 @@ impl App {
         Some(self.config.as_ref()?.join(name))
     }
 
-    /// Lista de caminhos guardada em `name`; só os arquivos que ainda existem.
+    /// List of paths stored in `name`; only the files that still exist.
     fn read_list(&self, name: &str) -> Vec<String> {
         self.config_file(name)
             .and_then(|path| fs::read_to_string(path).ok())
@@ -166,7 +166,7 @@ impl App {
         let _ = fs::write(path, json!(list).to_string());
     }
 
-    /// Arquivos abertos por último, do mais recente para o mais antigo.
+    /// Most recently opened files, newest first.
     fn recent_files(&self) -> Vec<String> {
         self.read_list("recent.json")
     }
@@ -180,8 +180,8 @@ impl App {
         self.write_list("recent.json", &list);
     }
 
-    /// Pede as miniaturas das lâminas editadas ou acrescentadas que ainda não existem e
-    /// devolve, para cada entrada com texto novo, a chave da miniatura dela.
+    /// Requests the thumbnails of edited or added slides that do not exist yet and
+    /// returns, for each entry with new text, the key of its thumbnail.
     fn draft_thumbs(&mut self, id: u64, entries: &[Entry]) -> Vec<Option<String>> {
         let rendering = self.render.is_some();
         let Some(doc) = self.doc(id) else { return Vec::new() };
@@ -218,8 +218,8 @@ impl App {
         }
     }
 
-    /// Converte o rascunho para a pré-visualização e devolve a página da lâmina `index`.
-    /// `head`, se vier, substitui o front-matter (edição do front-matter).
+    /// Renders the draft for the preview and returns the page of slide `index`.
+    /// `head`, if given, replaces the front matter (front-matter editing).
     fn preview(
         &mut self,
         id: u64,
@@ -247,13 +247,18 @@ impl App {
 
     fn docs_json(&self) -> Value {
         let docs: Vec<Value> = self.docs.iter().map(Doc::tab_json).collect();
-        json!({ "docs": docs, "recent": self.recent_files() })
+        let recent: Vec<Value> = self
+            .recent_files()
+            .iter()
+            .map(|file| file_json(Path::new(file)))
+            .collect();
+        json!({ "docs": docs, "recent": recent })
     }
 }
 
 enum SaveError {
     ExternalChange,
-    /// Outra janela salvou o arquivo depois do estado que esta conhecia.
+    /// Another window saved the file after the state this one knew.
     Stale,
     Other(String),
 }
@@ -273,8 +278,8 @@ impl Doc {
         }
     }
 
-    /// Guarda uma cópia do que está no disco antes da primeira gravação desta sessão
-    /// (ou de novo, se alguém mexeu no arquivo por fora).
+    /// Keeps a copy of what is on disk before the first write of this session
+    /// (or again, if someone changed the file from outside).
     fn backup_before_write(&mut self, changed: bool) -> Result<(), SaveError> {
         if self.last_backup.is_none() || changed {
             let backup = backup(&self.path)
@@ -284,8 +289,8 @@ impl Doc {
         Ok(())
     }
 
-    /// `seen` é o `save_seq` que o navegador conhecia; se outro salvamento aconteceu
-    /// depois, a gravação só segue com `force`.
+    /// `seen` is the `save_seq` the browser knew; if another save happened since,
+    /// the write only goes ahead with `force`.
     fn save(&mut self, entries: Vec<Entry>, force: bool, seen: Option<u64>) -> Result<(), SaveError> {
         if !force && seen.is_some_and(|seen| seen != self.save_seq) {
             return Err(SaveError::Stale);
@@ -300,7 +305,7 @@ impl Doc {
             .map_err(|e| SaveError::Other(format!("could not write the file: {e}")))?;
         self.save_seq += 1;
         if entries.iter().any(|(_, edit)| edit.is_some()) {
-            // Uma edição pode criar ou fundir lâminas: o arquivo gravado vira a nova base.
+            // An edit can create or merge slides: the written file becomes the new base.
             self.adopt(Deck::parse(content), &entries);
         } else {
             self.last_disk = content.into_bytes();
@@ -310,7 +315,7 @@ impl Doc {
         Ok(())
     }
 
-    /// Troca o front-matter do arquivo em disco, mantendo as lâminas como estão gravadas.
+    /// Replaces the front matter of the file on disk, keeping the slides as written.
     fn save_head(&mut self, head: &str, force: bool) -> Result<(), SaveError> {
         let changed = self.external_change();
         if changed && !force {
@@ -346,14 +351,14 @@ impl Doc {
         Ok(())
     }
 
-    /// Troca o deck em memória pelo conteúdo que está no disco. `origin` diz de quais
-    /// lâminas antigas as novas vieram, para reaproveitar as miniaturas das intactas.
+    /// Replaces the in-memory deck with what is on disk. `origin` says which old slides
+    /// the new ones came from, so the thumbnails of untouched slides can be reused.
     fn adopt(&mut self, deck: Deck, origin: &[Entry]) {
         let count = deck.slides.len();
         let mut has_thumb = vec![false; count];
         if origin.len() == count {
             let file = |name: String| self.thumb_dir.join(name);
-            // em duas etapas, porque os números novos e antigos se sobrepõem
+            // in two passes, because the new and old numbers overlap
             for (new, (old, edit)) in origin.iter().enumerate() {
                 has_thumb[new] = edit.is_none()
                     && self.has_thumb[*old]
@@ -402,16 +407,10 @@ impl Doc {
                 let mut warn = Vec::new();
                 let directives = deck::forward_directives(&slide.text);
                 if !directives.is_empty() {
-                    warn.push(format!(
-                        "Directive that applies from this slide onwards: {}. Moving this slide changes which slides are affected.",
-                        directives.join(", ")
-                    ));
+                    warn.push(json!({ "kind": "directives", "names": directives }));
                 }
                 if slide.lead_comment {
-                    warn.push(
-                        "With headingDivider, the comment before the heading moves to the previous slide if this one stops being the first."
-                            .to_string(),
-                    );
+                    warn.push(json!({ "kind": "lead_comment" }));
                 }
                 json!({
                     "id": id,
@@ -430,11 +429,9 @@ impl Doc {
     }
 
     fn tab_json(&self) -> Value {
-        json!({
-            "doc": self.id,
-            "file": file_name(&self.path),
-            "path": self.path.display().to_string(),
-        })
+        let mut tab = file_json(&self.path);
+        tab["doc"] = json!(self.id);
+        tab
     }
 }
 
@@ -444,10 +441,10 @@ fn is_markdown(path: &Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("markdown"))
 }
 
-/// Conteúdo de uma pasta para o diálogo "Open": subpastas e arquivos Markdown.
-/// Se `target` for um arquivo, devolve só o caminho dele.
+/// Contents of a folder for the "Open" dialog: subfolders and Markdown files.
+/// If `target` is a file, returns just its path.
 fn browse(target: &Path) -> Result<Value, String> {
-    let dir = fs::canonicalize(target)
+    let dir = real_path(target)
         .map_err(|e| format!("could not open {}: {e}", target.display()))?;
     if dir.is_file() {
         return Ok(json!({ "file": dir.display().to_string() }));
@@ -465,7 +462,7 @@ fn browse(target: &Path) -> Result<Value, String> {
     entries.sort_by_key(|(is_dir, name)| (!is_dir, name.to_lowercase()));
     let entries: Vec<Value> = entries
         .into_iter()
-        .map(|(is_dir, name)| json!({ "name": name, "dir": is_dir }))
+        .map(|(is_dir, name)| json!({ "name": name, "dir": is_dir, "path": dir.join(&name).display().to_string() }))
         .collect();
     Ok(json!({
         "dir": dir.display().to_string(),
@@ -476,11 +473,13 @@ fn browse(target: &Path) -> Result<Value, String> {
 
 const RECENT_MAX: usize = 12;
 
-/// Pasta de configuração do usuário (`~/.config/marp-order`).
+/// User configuration folder (`~/.config/marp-order`).
 fn config_dir() -> Option<PathBuf> {
-    let base = match std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
-        Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
+    let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let base = match var("XDG_CONFIG_HOME") {
+        Some(dir) => dir,
+        None if cfg!(windows) => var("APPDATA")?,
+        None => var("HOME")?.join(".config"),
     };
     Some(base.join("marp-order"))
 }
@@ -490,6 +489,29 @@ fn load(path: &Path) -> Result<Deck, String> {
     let text = String::from_utf8(bytes)
         .map_err(|_| format!("{} is not a valid UTF-8 file", path.display()))?;
     Ok(Deck::parse(text))
+}
+
+/// Real, absolute path. On Windows, without the `\\?\` prefix that `canonicalize` adds
+/// and that marp-cli and the browser do not understand.
+fn real_path(path: &Path) -> io::Result<PathBuf> {
+    let real = fs::canonicalize(path)?;
+    if cfg!(windows) {
+        if let Some(plain) = real.to_str().and_then(|text| text.strip_prefix(r"\\?\")) {
+            if !plain.starts_with("UNC\\") {
+                return Ok(PathBuf::from(plain));
+            }
+        }
+    }
+    Ok(real)
+}
+
+/// Name, folder and full path of a file, so the interface never has to split paths.
+fn file_json(path: &Path) -> Value {
+    json!({
+        "file": file_name(path),
+        "dir": path.parent().map(|dir| dir.display().to_string()).unwrap_or_default(),
+        "path": path.display().to_string(),
+    })
 }
 
 fn file_name(path: &Path) -> String {
@@ -506,10 +528,10 @@ fn file_signature(path: &Path) -> Option<(u64, SystemTime)> {
 const BACKUP_DIR: &str = ".marp-order-backups";
 const BACKUP_KEEP: usize = 10;
 
-/// `AAAAMMDD-HHMMSS` (UTC) a partir de segundos desde 1970.
+/// `YYYYMMDD-HHMMSS` (UTC) from seconds since 1970.
 fn timestamp(seconds: u64) -> String {
     let (days, rest) = (seconds / 86_400, seconds % 86_400);
-    // dias -> data civil (algoritmo de Howard Hinnant)
+    // days -> civil date (Howard Hinnant's algorithm)
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
@@ -527,8 +549,8 @@ fn timestamp(seconds: u64) -> String {
     )
 }
 
-/// Copia o arquivo para `.marp-order-backups/<nome>.<data>.bak`, ao lado dele, e apaga
-/// as cópias mais antigas além das `BACKUP_KEEP` mais recentes.
+/// Copies the file to `.marp-order-backups/<name>.<date>.bak`, next to it, and deletes
+/// the copies older than the `BACKUP_KEEP` most recent ones.
 fn backup(path: &Path) -> io::Result<PathBuf> {
     let dir = path.parent().unwrap_or(Path::new(".")).join(BACKUP_DIR);
     fs::create_dir_all(&dir)?;
@@ -561,14 +583,14 @@ fn backup(path: &Path) -> io::Result<PathBuf> {
     Ok(target)
 }
 
-/// Chave da miniatura de um texto de lâmina ainda não salvo.
+/// Thumbnail key of a slide text that is not saved yet.
 fn text_key(text: &str) -> String {
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
-/// Grava em um temporário ao lado e renomeia; se o sistema de arquivos recusar, grava direto.
+/// Writes to a temporary file alongside and renames it; if the file system refuses, writes directly.
 fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     let tmp = path.with_file_name(format!(".{}.marp-order.tmp", file_name(path)));
     let attempt = (|| {
@@ -641,7 +663,7 @@ fn main() -> ExitCode {
 fn run() -> Result<(), String> {
     let args = parse_args()?;
     let tmp = std::env::temp_dir().join(format!("marp-order-{}", std::process::id()));
-    // o marp-cli serve às miniaturas e à pré-visualização do editor
+    // marp-cli serves both the thumbnails and the editor preview
     let marp_cmd = thumbs::resolve_cmd(args.marp_cmd.as_deref());
     let thumb_start = match (&marp_cmd, args.thumbs) {
         (_, false) => ("off", String::new()),
@@ -672,7 +694,7 @@ fn run() -> Result<(), String> {
     {
         let mut app = app.lock().unwrap();
         if args.files.is_empty() {
-            // sem argumentos: reabre o que estava aberto da última vez
+            // no arguments: reopen what was open last time
             for file in app.read_list("session.json") {
                 let _ = app.open(Path::new(&file));
             }
@@ -695,16 +717,31 @@ fn run() -> Result<(), String> {
 
     println!("Open {url}  (Ctrl+C to stop)");
     if args.open {
-        let _ = Command::new("xdg-open")
-            .arg(&url)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+        open_browser(&url);
     }
 
     serve(&server, &app, port);
     Ok(())
+}
+
+/// Opens the address in the system's default browser.
+fn open_browser(url: &str) {
+    let mut command = if cfg!(target_os = "macos") {
+        Command::new("open")
+    } else if cfg!(windows) {
+        // `start` is a cmd builtin; its first quoted argument is the window title
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start", ""]);
+        cmd
+    } else {
+        Command::new("xdg-open")
+    };
+    let _ = command
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
 }
 
 fn serve(server: &Server, app: &Mutex<App>, port: u16) {
@@ -733,7 +770,7 @@ fn header_value(request: &Request, name: &'static str) -> Option<String> {
         .map(|h| h.value.to_string())
 }
 
-/// Lê `[{"id": n, "text": "..."}]`; `text` só vem nas lâminas editadas.
+/// Reads `[{"id": n, "text": "..."}]`; `text` is only present on edited slides.
 fn parse_entries(value: &Value, slide_count: usize) -> Option<Vec<Entry>> {
     value
         .as_array()?
@@ -745,9 +782,9 @@ fn parse_entries(value: &Value, slide_count: usize) -> Option<Vec<Entry>> {
         .collect()
 }
 
-/// Arquivo da pasta `root` do deck (ou abaixo dela) pedido pela pré-visualização.
+/// File in the deck's `root` folder (or below it) requested by the preview.
 fn deck_asset(root: &Path, url_path: &str) -> Option<(Vec<u8>, &'static str)> {
-    let file = fs::canonicalize(root.join(percent_decode(url_path))).ok()?;
+    let file = real_path(&root.join(percent_decode(url_path))).ok()?;
     if !file.starts_with(root) {
         return None;
     }
@@ -791,7 +828,7 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Valor de `name=` na query string.
+/// Value of `name=` in the query string.
 fn query<'a>(url: &'a str, name: &str) -> Option<&'a str> {
     url.split_once('?')?
         .1
@@ -800,7 +837,7 @@ fn query<'a>(url: &'a str, name: &str) -> Option<&'a str> {
 }
 
 fn handle(mut request: Request, app: &Mutex<App>, port: u16) {
-    // Só o próprio navegador local fala com o servidor: barra DNS rebinding e POSTs de outros sites.
+    // Only the local browser talks to the server: blocks DNS rebinding and POSTs from other sites.
     let host = header_value(&request, "Host").unwrap_or_default();
     if host != format!("127.0.0.1:{port}") && host != format!("localhost:{port}") {
         return respond_error(request, 403, "invalid host");
@@ -839,7 +876,7 @@ fn handle(mut request: Request, app: &Mutex<App>, port: u16) {
             None => respond_error(request, 404, "file not open"),
         },
         _ if route.starts_with("/thumb/") => {
-            // /thumb/<arquivo>/<lâmina>
+            // /thumb/<file>/<slide>
             let mut parts = route["/thumb/".len()..].split('/');
             let doc = parts.next().and_then(|id| id.parse().ok()).and_then(|id| app.doc(id));
             let slide = parts.next().and_then(|id| id.parse::<usize>().ok());
@@ -849,7 +886,7 @@ fn handle(mut request: Request, app: &Mutex<App>, port: u16) {
                 }
                 _ => None,
             };
-            // /thumb/<arquivo>/d-<chave>: lâmina ainda não salva
+            // /thumb/<file>/d-<key>: a slide that is not saved yet
             let draft = route["/thumb/".len()..].split_once("/d-").and_then(|(doc, key)| {
                 let doc = app.doc(doc.parse().ok()?)?;
                 let known = doc.drafts.iter().any(|k| k == key);
@@ -871,7 +908,7 @@ fn handle(mut request: Request, app: &Mutex<App>, port: u16) {
             match app.preview.as_ref().and_then(|p| p.page(page)) {
                 Some(html) => {
                     let kind = Header::from_bytes("Content-Type", "text/html; charset=utf-8").unwrap();
-                    // o HTML do modo --watch tenta recarregar a si mesmo por websocket
+                    // the HTML of --watch mode tries to reload itself over a websocket
                     let policy =
                         Header::from_bytes("Content-Security-Policy", "connect-src 'none'").unwrap();
                     let response = Response::from_string(html).with_header(kind).with_header(policy);
@@ -881,7 +918,7 @@ fn handle(mut request: Request, app: &Mutex<App>, port: u16) {
             }
         }
         _ if route.starts_with("/preview/") => {
-            // imagens, fontes e CSS que o deck em pré-visualização referencia por caminho relativo
+            // images, fonts and CSS that the deck being previewed references by relative path
             let asset = app
                 .preview
                 .as_ref()
@@ -922,7 +959,7 @@ fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
             };
         }
         "/api/import" => {
-            // texto de lâminas copiadas de um arquivo aberto para outro, em outra pasta
+            // text of slides copied from one open file to another, in a different folder
             let mut dir = |key: &str| {
                 let doc = app.doc(body[key].as_u64()?)?;
                 Some(doc.path.parent()?.to_path_buf())
@@ -940,7 +977,7 @@ fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
         _ => {}
     }
 
-    // as demais rotas agem sobre um arquivo aberto
+    // the remaining routes act on an open file
     let Some(id) = body["doc"].as_u64().filter(|&id| app.doc(id).is_some()) else {
         return respond_error(request, 404, "file not open");
     };
@@ -1035,7 +1072,7 @@ mod tests {
 
     const DECK: &str = "---\nmarp: true\n---\n\n# One\n\n---\n\n# Two\n\n---\n\n# Three\n";
 
-    /// Pasta temporária própria de cada teste, apagada ao final.
+    /// Temporary folder owned by one test, deleted at the end.
     struct Sandbox(PathBuf);
 
     impl Sandbox {
@@ -1044,7 +1081,7 @@ mod tests {
             let name = format!("marp-order-test-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::SeqCst));
             let dir = std::env::temp_dir().join(name);
             fs::create_dir_all(&dir).unwrap();
-            Sandbox(fs::canonicalize(dir).unwrap())
+            Sandbox(real_path(&dir).unwrap())
         }
 
         fn file(&self, name: &str, content: &str) -> PathBuf {
@@ -1100,7 +1137,7 @@ mod tests {
         assert_eq!(copies.len(), 1);
         assert_eq!(fs::read_to_string(&copies[0]).unwrap(), DECK);
 
-        // a segunda gravação da sessão não cria outra cópia
+        // the second write of the session does not create another copy
         assert!(doc.save(vec![(0, None), (1, None), (2, None)], false, Some(1)).is_ok());
         assert_eq!(fs::read_to_string(&path).unwrap(), DECK);
         assert_eq!(backups(&sandbox.0).len(), 1);
@@ -1116,7 +1153,7 @@ mod tests {
         let order = || vec![(1, None), (0, None), (2, None)];
 
         assert!(doc.save(order(), false, Some(0)).is_ok());
-        // outra janela ainda conhece o estado anterior
+        // another window still knows the previous state
         assert!(matches!(doc.save(order(), false, Some(0)), Err(SaveError::Stale)));
         assert!(doc.save(order(), true, Some(0)).is_ok());
 
@@ -1124,7 +1161,7 @@ mod tests {
         assert!(doc.external_change());
         assert!(matches!(doc.save(order(), false, Some(2)), Err(SaveError::ExternalChange)));
         assert!(doc.save(order(), true, Some(2)).is_ok());
-        // o que estava no disco foi guardado antes de ser sobrescrito
+        // what was on disk was kept before being overwritten
         let copies = backups(&sandbox.0);
         assert_eq!(copies.len(), 2);
         assert!(copies.iter().any(|copy| fs::read_to_string(copy).unwrap().contains("# Four")));
@@ -1168,7 +1205,7 @@ mod tests {
         assert!(matches!(doc.save_head("theme: gaia", false), Err(SaveError::Other(_))));
         assert_eq!(fs::read_to_string(&path).unwrap(), saved);
 
-        // sem front-matter, as lâminas continuam as mesmas
+        // without front matter, the slides stay the same
         assert!(doc.save_head("", false).is_ok());
         assert_eq!(doc.deck.slides.len(), 3);
         assert!(fs::read_to_string(&path).unwrap().starts_with("\n# One"));
@@ -1251,7 +1288,7 @@ mod tests {
         assert_eq!(query("/x?pages=1", "page"), None);
     }
 
-    /// Faz um pedido HTTP cru e devolve (status, corpo).
+    /// Sends a raw HTTP request and returns (status, body).
     fn http(port: u16, method: &str, path: &str, headers: &[&str], body: &str) -> (u16, String) {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
         let mut request = format!("{method} {path} HTTP/1.1\r\nConnection: close\r\nContent-Length: {}\r\n", body.len());
@@ -1286,7 +1323,7 @@ mod tests {
             (status, serde_json::from_str::<Value>(&text).unwrap())
         };
 
-        // só o navegador local, e só páginas do próprio marp-order
+        // only the local browser, and only pages of marp-order itself
         assert_eq!(http(port, "GET", "/api/docs", &["Host: evil.example"], "").0, 403);
         assert_eq!(http(port, "POST", "/api/open", &[&host], "{}").0, 403);
         assert_eq!(http(port, "PUT", "/", &[&host], "").0, 405);
@@ -1308,7 +1345,7 @@ mod tests {
             fs::read_to_string(&path).unwrap(),
             "---\nmarp: true\n---\n\n# Two\n\n---\n\n# One\n\n---\n\n# Third\n"
         );
-        // o mesmo pedido de novo fala de lâminas que não existem mais
+        // the same request again refers to slides that no longer exist
         assert_eq!(post("/api/save", save).0, 409);
         let bad = json!({ "doc": doc, "generation": 2, "slides": [{ "id": 9 }] });
         assert_eq!(post("/api/save", bad).0, 400);

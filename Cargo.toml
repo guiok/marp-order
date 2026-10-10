@@ -1,10 +1,13 @@
 [package]
 name = "marp-order"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
-description = "Reorganiza as lâminas de uma apresentação Marp em uma matriz visual"
+description = "Visual slide sorter for Marp decks: reorder, edit, compare and merge slides in the browser"
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/guiok/marp-order"
+homepage = "https://github.com/guiok/marp-order"
+exclude = [".github/", "docs/*.gif", "docs/*.png", "Makefile"]
 rust-version = "1.80"
 keywords = ["marp", "slides", "markdown", "presentation"]
 categories = ["command-line-utilities"]

@@ -1,8 +1,8 @@
-//! Caminhos relativos em lâminas copiadas de um deck para outro, em outra pasta.
+//! Relative paths in slides copied from one deck to another, in a different folder.
 
 use std::path::{Component, Path, PathBuf};
 
-/// Caminho relativo de `to` até `from` (as duas pastas absolutas), terminado em `/`.
+/// Relative path from `to` to `from` (both absolute folders), ending in `/`.
 fn prefix(from: &Path, to: &Path) -> Option<String> {
     let from: Vec<Component> = from.components().collect();
     let to: Vec<Component> = to.components().collect();
@@ -38,8 +38,8 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Um destino é reescrito só se for um caminho relativo para um arquivo que existe
-/// na pasta de origem; URLs, âncoras e caminhos absolutos ficam como estão.
+/// A target is rewritten only if it is a relative path to a file that exists in the
+/// source folder; URLs, anchors and absolute paths are left alone.
 fn is_local_file(target: &str, from: &Path) -> bool {
     let path = target.split(['?', '#']).next().unwrap_or("");
     !path.is_empty()
@@ -48,8 +48,8 @@ fn is_local_file(target: &str, from: &Path) -> bool {
         && from.join(percent_decode(path)).is_file()
 }
 
-/// Reescreve `](alvo)`, `src="alvo"` e `url(alvo)` de `text`, escrito para um deck na
-/// pasta `from`, para que continuem apontando para os mesmos arquivos a partir de `to`.
+/// Rewrites `](target)`, `src="target"` and `url(target)` in `text`, written for a deck in
+/// folder `from`, so they keep pointing to the same files when seen from `to`.
 pub fn rebase(text: &str, from: &Path, to: &Path) -> String {
     let Some(prefix) = prefix(from, to).filter(|p| !p.is_empty()) else {
         return text.to_string();
@@ -69,7 +69,7 @@ pub fn rebase(text: &str, from: &Path, to: &Path) -> String {
         let start = at + opener.len();
         out.push_str(&rest[..start]);
         rest = &rest[start..];
-        // `url("x")` e `url('x')` trazem aspas dentro dos parênteses
+        // `url("x")` and `url('x')` have quotes inside the parentheses
         let quote = rest.chars().next().filter(|c| opener == "url(" && matches!(c, '"' | '\''));
         if let Some(quote) = quote {
             out.push(quote);

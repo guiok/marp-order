@@ -1,4 +1,4 @@
-//! Miniaturas das lâminas, geradas pelo marp-cli em segundo plano.
+//! Slide thumbnails, rendered by marp-cli in the background.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,12 +9,12 @@ use std::thread;
 
 use crate::App;
 
-/// Pedido ao gerador de miniaturas.
+/// A request to the thumbnail renderer.
 pub enum Job {
-    /// Renderizar o arquivo aberto de número `0`, como está no disco.
+    /// Render the open file with this number, as it is on disk.
     Disk(u64),
-    /// Renderizar um rascunho (ordem e edições ainda não salvas) e guardar as imagens das
-    /// lâminas pedidas em `wanted`: (posição a partir de 0, chave do texto).
+    /// Render a draft (order and edits not saved yet) and keep the images of the slides
+    /// listed in `wanted`: (position from 0, key of the text).
     Draft {
         doc: u64,
         generation: u64,
@@ -25,24 +25,26 @@ pub enum Job {
 }
 
 pub struct Config {
-    /// Comando do marp-cli já dividido em programa + argumentos.
+    /// The marp-cli command, already split into program + arguments.
     pub cmd: Vec<String>,
-    /// Argumentos extras do usuário (ex.: `--theme-set tema.css`).
+    /// Extra arguments from the user (e.g. `--theme-set theme.css`).
     pub extra: Vec<String>,
 }
 
-/// Escolhe o marp-cli: o comando informado, `marp` no PATH ou, por último, `npx`.
+/// Picks marp-cli: the given command, `marp` in PATH or, as a last resort, `npx`.
 pub fn resolve_cmd(user: Option<&str>) -> Option<Vec<String>> {
     if let Some(cmd) = user {
         let parts: Vec<String> = cmd.split_whitespace().map(String::from).collect();
         return (!parts.is_empty()).then_some(parts);
     }
-    if in_path("marp") {
-        return Some(vec!["marp".into()]);
+    // on Windows npm installs commands as `.cmd` scripts
+    let (marp, npx) = if cfg!(windows) { ("marp.cmd", "npx.cmd") } else { ("marp", "npx") };
+    if in_path(marp) {
+        return Some(vec![marp.into()]);
     }
-    if in_path("npx") {
+    if in_path(npx) {
         return Some(vec![
-            "npx".into(),
+            npx.into(),
             "--yes".into(),
             "@marp-team/marp-cli@latest".into(),
         ]);
@@ -56,8 +58,8 @@ fn in_path(program: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Inicia o gerador. Cada mensagem traz o número de um arquivo aberto e pede uma nova
-/// renderização do que está em disco.
+/// Starts the renderer. Each message carries the number of an open file and asks for a
+/// new render of what is on disk.
 pub fn spawn(app: Arc<Mutex<App>>, config: Config) -> Sender<Job> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || worker(app, config, rx));
@@ -73,7 +75,7 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
                 Err(_) => return,
             }
         }
-        // pedidos acumulados para o mesmo arquivo viram um só; do rascunho vale o último
+        // queued requests for the same file collapse into one; for drafts the last one wins
         for job in rx.try_iter() {
             pending.retain(|old| match (old, &job) {
                 (Job::Disk(a), Job::Disk(b)) => a != b,
@@ -105,7 +107,7 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
                 })
             };
             let Some((generation, save_seq, order, path, dir)) = job else {
-                break; // o arquivo foi fechado
+                break; // the file was closed
             };
             let work = dir.join("render");
             let result = if order.is_empty() {
@@ -119,7 +121,7 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
                 break;
             };
             if app.generation != generation || app.save_seq != save_seq {
-                continue; // o arquivo mudou durante a renderização
+                continue; // the file changed while rendering
             }
             match result {
                 Ok(images) if images.len() == order.len() => {
@@ -132,7 +134,7 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
                     app.thumb_state = "ready";
                 }
                 Ok(images) => {
-                    // A divisão do Marp não bate com a nossa: não dá para confiar no mapeamento.
+                    // Marp split the deck differently from us: the mapping cannot be trusted.
                     app.has_thumb.iter_mut().for_each(|h| *h = false);
                     app.thumb_state = "mismatch";
                     app.thumb_msg = format!(
@@ -153,8 +155,8 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
     }
 }
 
-/// Miniaturas de lâminas ainda não salvas. O rascunho é gravado ao lado do deck, para as
-/// imagens de caminho relativo aparecerem, e apagado em seguida.
+/// Thumbnails of slides that are not saved yet. The draft is written next to the deck,
+/// so images with relative paths show up, and deleted right after.
 fn draft(
     app: &Mutex<App>,
     config: &Config,
@@ -184,7 +186,7 @@ fn draft(
 
     let mut app = app.lock().unwrap();
     if let (Ok(images), Some(doc)) = (images, app.doc(id)) {
-        // se o Marp dividir o rascunho de outro jeito, as posições não são confiáveis
+        // if Marp splits the draft differently, the positions cannot be trusted
         if doc.generation == generation && images.len() == total {
             for (at, key) in wanted {
                 let target = dir.join(format!("d-{key}.jpeg"));
@@ -197,7 +199,7 @@ fn draft(
     let _ = fs::remove_dir_all(&work);
 }
 
-/// Renderiza o deck e devolve as imagens na ordem das lâminas.
+/// Renders the deck and returns the images in slide order.
 fn render(config: &Config, deck: &Path, work: &Path) -> Result<Vec<PathBuf>, String> {
     let _ = fs::remove_dir_all(work);
     fs::create_dir_all(work).map_err(|e| e.to_string())?;

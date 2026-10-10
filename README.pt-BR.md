@@ -22,30 +22,39 @@ sem alterar o conteúdo das lâminas.
 - **Não reformata nada**: lâminas não editadas são movidas byte a byte; o front-matter
   fica onde está.
 - **Seguro**: backup automático, gravação atômica e detecção de edição externa.
+- **Interface em português e inglês**, com troca a qualquer momento.
 
-> A interface do programa é em inglês.
+> Os nomes de botões citados abaixo são os da interface em inglês; em português eles
+> aparecem traduzidos (**Discard** é **Descartar**, **Compare…** é **Comparar…** etc.).
 
 ## Requisitos
 
 | Para | Precisa de |
 |---|---|
-| Compilar | [Rust](https://rustup.rs) 1.80 ou mais novo |
+| Compilar do código-fonte | [Rust](https://rustup.rs) 1.80 ou mais novo |
 | Miniaturas e pré-visualização (opcional) | [marp-cli](https://github.com/marp-team/marp-cli) e Chrome, Chromium ou Edge |
 
 Sem o marp-cli o programa funciona do mesmo jeito, mostrando o texto de cada lâmina no
-lugar da miniatura; o editor abre, mas sem a pré-visualização. O navegador é aberto com `xdg-open` (Linux); em outros sistemas, abra
-manualmente o endereço mostrado no terminal.
+lugar da miniatura; o editor abre, mas sem a pré-visualização.
+
+O marp-order é desenvolvido e usado no Linux. As versões para macOS e Windows são
+compiladas e passam pelos testes automáticos a cada alteração, mas não foram experimentadas
+à mão; abra uma issue se algo se comportar mal nelas.
 
 ## Instalação
 
+**Binários prontos** para Linux, macOS e Windows acompanham cada
+[release](https://github.com/guiok/marp-order/releases): baixe o arquivo do seu sistema,
+descompacte e ponha o `marp-order` em alguma pasta do PATH.
+
+**Do código-fonte**, com o Rust instalado:
+
 ```bash
-git clone https://github.com/guiok/marp-order.git
-cd marp-order
-cargo install --path .
+cargo install --git https://github.com/guiok/marp-order
 ```
 
-Isso instala o binário em `~/.cargo/bin`. Como alternativa, `make install` compila e copia
-para `~/.local/bin`.
+Isso instala o binário em `~/.cargo/bin`. Dentro de um clone do repositório,
+`cargo install --path .` faz o mesmo e `make install` copia para `~/.local/bin`.
 
 Para as miniaturas:
 
@@ -79,6 +88,7 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Desfazer / refazer | `Ctrl+Z` / `Ctrl+Y` |
 | Editar o conteúdo | duplo clique |
 | Descartar alterações | botão **Discard** |
+| Alternar entre português e inglês | seletor **EN / PT**, no canto superior direito |
 | Salvar no arquivo | `Ctrl+S` |
 | Recarregar o arquivo do disco | `Ctrl+R` |
 | Abrir outro arquivo | `Ctrl+O` ou **+ Open** |
@@ -125,7 +135,7 @@ no fim.
 
 A lista de arquivos abertos é lembrada: rodar `marp-order` sem arquivo reabre as abas da
 última sessão. Os recentes e a sessão ficam em `~/.config/marp-order/` (ou
-`$XDG_CONFIG_HOME/marp-order/`).
+`$XDG_CONFIG_HOME/marp-order/`; `%APPDATA%\marp-order` no Windows).
 
 ### Comparar e mesclar
 
@@ -214,6 +224,11 @@ com ⚠ para você conferir.
   resultado final não são afetados).
 - **Uso local.** O servidor aceita apenas conexões de `127.0.0.1` e não tem autenticação;
   não foi feito para ser exposto na rede.
+- **Porta da pré-visualização.** Enquanto a pré-visualização do editor está em uso, o
+  modo watch do marp-cli abre um servidor WebSocket próprio para avisos de recarga, na
+  primeira porta livre a partir da 37717, em todas as interfaces de rede. O marp-cli não
+  tem opção para mudar isso. O marp-order não usa esse servidor e nenhum conteúdo do deck
+  passa por ele.
 
 ## Desenvolvimento
 
@@ -221,14 +236,16 @@ com ⚠ para você conferir.
 make test     # testes do parser, do servidor e da interface
 make build    # binário de release em target/release/
 make                          # executa, reabrindo a última sessão
-make abrir DECK=apresentacao.md
+make run DECK=apresentacao.md
 ```
 
 A estrutura do código e as regras de divisão de lâminas estão descritas em
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md). Contribuições são bem-vindas: ao mexer no
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (em inglês). Contribuições são bem-vindas: ao mexer no
 parser, acrescente um teste em `src/deck.rs` e um caso em `slide_count_matches_marp_cli`,
 que compara o número de lâminas com o marp-cli de verdade (`cargo test -- --ignored`).
-As mesmas verificações rodam a cada push no GitHub Actions.
+As mesmas verificações rodam a cada push no GitHub Actions, em Linux, macOS e Windows.
+Os textos da interface passam por `t('…')`; um texto novo precisa da tradução na tabela
+`PT` de `src/ui.html`.
 
 ## Licença
 

@@ -1,5 +1,5 @@
-// Testes das funções puras da interface (o bloco entre <pure> e </pure> de src/ui.html).
-// Rodar com: node --test tests/ui_logic.test.jsui_logic.test.js
+// Tests for the pure functions of the interface (the block between <pure> and </pure> in src/ui.html).
+// Run with: node --test tests/ui_logic.test.js
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -46,7 +46,7 @@ test('alignSlides pairs retitled slides by similar content and keeps moved ones 
   const body = '\n\n- first point\n- second point\n- third point';
   const rows = ui.alignSlides(slides('# Plan' + body, '# Z'), slides('# Roadmap' + body, '# Z'));
   assert.equal(kinds(rows), 'changed same');
-  // uma lâmina que só mudou de lugar aparece como removida de um ponto e nova em outro
+  // a slide that only moved shows up as removed from one place and new in another
   assert.equal(kinds(ui.alignSlides(slides('# A', '# B', '# C'), slides('# C', '# A', '# B'))), 'right same same left');
   assert.equal(kinds(ui.alignSlides([], slides('# A'))), 'right');
 });
@@ -80,16 +80,16 @@ test('highlight keeps the text unchanged', () => {
 
 test('makeRemap carries the undo history over a save that renumbers slides', () => {
   const oldSlides = [{ text: '# A' }, { text: '# B' }, { text: '# C' }];
-  // gravado: C, A editada, B  ->  o servidor renumera para 0, 1, 2
+  // written: C, edited A, B  ->  the server renumbers them 0, 1, 2
   const saved = [{ k: 1, id: 2 }, { k: 2, id: 0, text: '# A2' }, { k: 3, id: 1 }];
   const newSlides = [{ text: '# C' }, { text: '# A2' }, { text: '# B' }];
   const remap = ui.makeRemap(oldSlides, newSlides, saved, 0);
   assert.deepEqual(saved.map(remap), [{ k: 1, id: 0 }, { k: 2, id: 1 }, { k: 3, id: 2 }]);
-  // estado anterior do histórico: A ainda sem a edição
+  // earlier state in the history: A still without the edit
   assert.deepEqual(remap({ k: 2, id: 0 }), { k: 2, id: 1, text: '# A' });
-  // lâmina colada que não foi gravada continua sendo uma lâmina nova
+  // a pasted slide that was not written is still a new slide
   assert.deepEqual(remap({ k: 9, id: 0, text: '# X', fresh: true }), { k: 9, id: 0, text: '# X', fresh: true });
-  // uma edição que dividiu a lâmina: sem posição confiável, vale o texto
+  // an edit that split the slide: no reliable position, so the text decides
   const split = ui.makeRemap(oldSlides, [{ text: '# A' }, { text: '# B' }, { text: '# B2' }, { text: '# C' }], saved, 0);
   assert.deepEqual(split({ k: 3, id: 2 }), { k: 3, id: 3 });
   assert.deepEqual(split({ k: 4, id: 0, text: '# gone' }), { k: 4, id: 0, text: '# gone', fresh: true });
@@ -99,4 +99,27 @@ test('matchesQuery needs every word, in any case', () => {
   assert.ok(ui.matchesQuery('Quarterly Roadmap\n- Q1: pilot', 'roadmap PILOT'));
   assert.ok(!ui.matchesQuery('Quarterly Roadmap', 'roadmap budget'));
   assert.ok(ui.matchesQuery('anything', '  '));
+});
+
+test('every interface text has a Portuguese translation', () => {
+  const decode = (raw) => new Function(`return '${raw}';`)();
+  const keys = new Set();
+  // t('...') calls in the script and data-t / data-tt / data-tp attributes in the HTML
+  for (const m of html.matchAll(/\bt\('((?:[^'\\]|\\.)*)'/g)) keys.add(decode(m[1]));
+  for (const m of html.matchAll(/data-t[tp]?="([^"]*)"/g)) keys.add(m[1]);
+  for (const key of ['{0} different', '{0} only here', '{0} only in the other']) keys.add(key);
+  assert.ok(keys.size > 90, `only ${keys.size} keys found`);
+  const missing = [...keys].filter((key) => !(key in ui.PT));
+  assert.deepEqual(missing, []);
+  const unused = Object.keys(ui.PT).filter((key) => !keys.has(key));
+  assert.deepEqual(unused, []);
+});
+
+test('translate fills placeholders and falls back to English', () => {
+  assert.equal(ui.translate('pt', 'was {0}', [3]), 'era 3');
+  assert.equal(ui.translate('en', 'was {0}', [3]), 'was 3');
+  assert.equal(ui.translate('pt', '{0} copied to the end of {1}.', ['2 lâminas', 'b.md']), '2 lâminas copiada(s) para o fim de b.md.');
+  assert.equal(ui.translate('pt', 'not in the dictionary', []), 'not in the dictionary');
+  assert.match(ui.translate('en', 'help', []), /^Drag to reorder/);
+  for (const key of Object.keys(ui.EN)) assert.ok(ui.PT[key], key);
 });
