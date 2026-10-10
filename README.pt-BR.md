@@ -21,6 +21,8 @@ sem alterar o conteúdo das lâminas.
   fica onde está.
 - **Seguro**: backup automático, gravação atômica e detecção de edição externa.
 
+> A interface do programa é em inglês.
+
 ## Requisitos
 
 | Para | Precisa de |
@@ -69,12 +71,12 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Duplicar / remover | `Ctrl+D` / `Delete` |
 | Desfazer / refazer | `Ctrl+Z` / `Ctrl+Y` |
 | Editar o conteúdo | duplo clique |
-| Descartar alterações | botão **Descartar** |
+| Descartar alterações | botão **Discard** |
 | Salvar no arquivo | `Ctrl+S` |
 | Recarregar o arquivo do disco | `Ctrl+R` |
 
 Cada cartão mostra a posição nova e, se a lâmina mudou de lugar, a posição que ela tem no
-arquivo (`era 8`).
+arquivo (`was 8`).
 
 ### Editar uma lâmina
 
@@ -84,12 +86,12 @@ pré-visualização é refeita a cada alteração (algumas centenas de milissegu
 
 | Ação | Como |
 |---|---|
-| Aplicar a edição | `Ctrl+Enter` ou **Aplicar** |
+| Aplicar a edição | `Ctrl+Enter` ou **Apply** |
 | Aplicar e gravar o arquivo | `Ctrl+S` |
-| Cancelar | `Esc` ou **Cancelar** |
+| Cancelar | `Esc` ou **Cancel** |
 
 Aplicar não grava o arquivo: a edição fica pendente, como uma reordenação, e pode ser
-desfeita com `Ctrl+Z`. O cartão ganha a etiqueta **editada**, e a miniatura dele é
+desfeita com `Ctrl+Z`. O cartão ganha a etiqueta **edited**, e a miniatura dele é
 atualizada quando você salva. Escrever `---` dentro de uma lâmina a divide em duas; as
 novas lâminas aparecem na matriz depois de salvar.
 

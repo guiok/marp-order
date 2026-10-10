@@ -69,7 +69,7 @@ impl Preview {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn()
-                .map_err(|e| format!("não foi possível executar `{}`: {e}", self.cmd.join(" ")))?;
+                .map_err(|e| format!("could not run `{}`: {e}", self.cmd.join(" ")))?;
             self.watcher = Some(child);
             Duration::from_secs(30)
         };
@@ -84,10 +84,10 @@ impl Preview {
             }
             if let Some(Ok(Some(_))) = self.watcher.as_mut().map(Child::try_wait) {
                 self.watcher = None;
-                return Err("o marp-cli encerrou sem gerar a pré-visualização".into());
+                return Err("marp-cli exited without producing the preview".into());
             }
             if started.elapsed() > limit {
-                return Err("o marp-cli não respondeu a tempo".into());
+                return Err("marp-cli did not respond in time".into());
             }
             if written.elapsed() > Duration::from_millis(700) {
                 // O marp-cli perde alterações feitas enquanto ainda está iniciando ou

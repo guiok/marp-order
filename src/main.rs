@@ -19,21 +19,21 @@ use preview::Preview;
 const UI: &str = include_str!("ui.html");
 
 const USAGE: &str = "\
-Uso: marp-order [opções] <apresentacao.md> [-- argumentos do marp-cli]
+Usage: marp-order [options] <presentation.md> [-- marp-cli arguments]
 
-Abre no navegador uma matriz com as lâminas da apresentação Marp para
-reorganizar arrastando. Ao salvar, o arquivo .md é reescrito na nova ordem.
+Opens a grid with the slides of a Marp presentation in the browser so you
+can rearrange them by dragging. Saving rewrites the .md file in the new order.
 
-Opções:
-  --port <n>         porta do servidor local (padrão: escolhida pelo sistema)
-  --no-open          não abre o navegador automaticamente
-  --no-thumbs        não gera miniaturas (mostra só o texto das lâminas)
-  --marp-cmd <cmd>   comando do marp-cli (padrão: `marp` ou `npx @marp-team/marp-cli`)
-  -h, --help         mostra esta ajuda
-  -V, --version      mostra a versão
+Options:
+  --port <n>         local server port (default: chosen by the system)
+  --no-open          do not open the browser automatically
+  --no-thumbs        do not render thumbnails (show only the slide text)
+  --marp-cmd <cmd>   marp-cli command (default: `marp` or `npx @marp-team/marp-cli`)
+  -h, --help         show this help
+  -V, --version      show the version
 
-Exemplo com tema próprio:
-  marp-order aula.md -- --theme-set tema.css";
+Example with a custom theme:
+  marp-order talk.md -- --theme-set theme.css";
 
 struct Args {
     file: PathBuf,
@@ -94,12 +94,12 @@ impl App {
         if self.last_backup.is_none() || changed {
             let backup = free_backup_path(&self.path);
             fs::copy(&self.path, &backup)
-                .map_err(|e| SaveError::Other(format!("falha ao criar o backup: {e}")))?;
+                .map_err(|e| SaveError::Other(format!("could not create the backup: {e}")))?;
             self.last_backup = Some(backup);
         }
         let content = self.deck.compose(&entries);
         write_atomic(&self.path, content.as_bytes())
-            .map_err(|e| SaveError::Other(format!("falha ao gravar: {e}")))?;
+            .map_err(|e| SaveError::Other(format!("could not write the file: {e}")))?;
         self.save_seq += 1;
         if entries.iter().any(|(_, edit)| edit.is_some()) {
             // Uma edição pode criar ou fundir lâminas: o arquivo gravado vira a nova base.
@@ -155,7 +155,7 @@ impl App {
         let preview = self
             .preview
             .as_mut()
-            .ok_or("pré-visualização indisponível: marp-cli não encontrado")?;
+            .ok_or("preview unavailable: marp-cli not found")?;
         preview.render(&self.path, &markdown)?;
         Ok(page)
     }
@@ -186,13 +186,13 @@ impl App {
                 let directives = deck::forward_directives(&slide.text);
                 if !directives.is_empty() {
                     warn.push(format!(
-                        "Diretiva que vale desta lâmina em diante: {}. Mover esta lâmina muda quais lâminas são afetadas.",
+                        "Directive that applies from this slide onwards: {}. Moving this slide changes which slides are affected.",
                         directives.join(", ")
                     ));
                 }
                 if slide.lead_comment {
                     warn.push(
-                        "Com headingDivider, o comentário antes do título passa para a lâmina anterior se esta deixar de ser a primeira."
+                        "With headingDivider, the comment before the heading moves to the previous slide if this one stops being the first."
                             .to_string(),
                     );
                 }
@@ -213,9 +213,9 @@ impl App {
 }
 
 fn load(path: &Path) -> Result<Deck, String> {
-    let bytes = fs::read(path).map_err(|e| format!("não foi possível ler {}: {e}", path.display()))?;
+    let bytes = fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
     let text = String::from_utf8(bytes)
-        .map_err(|_| format!("{} não é um arquivo UTF-8 válido", path.display()))?;
+        .map_err(|_| format!("{} is not a valid UTF-8 file", path.display()))?;
     Ok(Deck::parse(text))
 }
 
@@ -288,20 +288,20 @@ fn parse_args() -> Result<Args, String> {
                 args.port = it
                     .next()
                     .and_then(|p| p.parse().ok())
-                    .ok_or("--port exige um número de porta")?;
+                    .ok_or("--port needs a port number")?;
             }
             "--marp-cmd" => {
-                args.marp_cmd = Some(it.next().ok_or("--marp-cmd exige um comando")?);
+                args.marp_cmd = Some(it.next().ok_or("--marp-cmd needs a command")?);
             }
             "--" => {
                 args.marp_extra = it.by_ref().collect();
             }
-            other if other.starts_with('-') => return Err(format!("opção desconhecida: {other}")),
-            _ if file.is_some() => return Err("informe apenas um arquivo".into()),
+            other if other.starts_with('-') => return Err(format!("unknown option: {other}")),
+            _ if file.is_some() => return Err("give only one file".into()),
             _ => file = Some(PathBuf::from(arg)),
         }
     }
-    args.file = file.ok_or("informe o arquivo .md da apresentação")?;
+    args.file = file.ok_or("give the presentation .md file")?;
     Ok(args)
 }
 
@@ -319,7 +319,7 @@ fn run() -> Result<(), String> {
     let args = parse_args()?;
     // Caminho real: gravar por rename não pode trocar um link simbólico por um arquivo.
     let path = fs::canonicalize(&args.file)
-        .map_err(|e| format!("não foi possível abrir {}: {e}", args.file.display()))?;
+        .map_err(|e| format!("could not open {}: {e}", args.file.display()))?;
     let deck = load(&path)?;
     let count = deck.slides.len();
 
@@ -329,7 +329,7 @@ fn run() -> Result<(), String> {
     let (thumb_state, thumb_msg) = match (&marp_cmd, args.thumbs) {
         (_, false) => ("off", String::new()),
         (Some(_), true) => ("rendering", String::new()),
-        (None, true) => ("error", "marp-cli não encontrado (instale `marp` ou `npx`)".into()),
+        (None, true) => ("error", "marp-cli not found (install `marp` or `npx`)".into()),
     };
 
     let preview = marp_cmd.as_ref().map(|cmd| {
@@ -365,12 +365,12 @@ fn run() -> Result<(), String> {
     });
 
     let server = Server::http(("127.0.0.1", args.port))
-        .map_err(|e| format!("não foi possível iniciar o servidor: {e}"))?;
+        .map_err(|e| format!("could not start the server: {e}"))?;
     let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(args.port);
     let url = format!("http://127.0.0.1:{port}/");
 
-    println!("marp-order: {} — {count} lâminas", path.display());
-    println!("Abra {url}  (Ctrl+C para encerrar)");
+    println!("marp-order: {} — {count} slides", path.display());
+    println!("Open {url}  (Ctrl+C to stop)");
     if args.open {
         let _ = Command::new("xdg-open")
             .arg(&url)
@@ -469,14 +469,14 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
     // Só o próprio navegador local fala com o servidor: barra DNS rebinding e POSTs de outros sites.
     let host = header_value(&request, "Host").unwrap_or_default();
     if host != format!("127.0.0.1:{port}") && host != format!("localhost:{port}") {
-        return respond_error(request, 403, "host inválido");
+        return respond_error(request, 403, "invalid host");
     }
     let is_post = *request.method() == Method::Post;
     if is_post && header_value(&request, "X-Marp-Order").is_none() {
-        return respond_error(request, 403, "requisição não autorizada");
+        return respond_error(request, 403, "unauthorized request");
     }
     if !is_post && *request.method() != Method::Get {
-        return respond_error(request, 405, "método não suportado");
+        return respond_error(request, 405, "method not supported");
     }
 
     let url = request.url().to_string();
@@ -508,7 +508,7 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                     let response = Response::from_data(bytes).with_header(kind).with_header(cache);
                     let _ = request.respond(response);
                 }
-                None => respond_error(request, 404, "miniatura indisponível"),
+                None => respond_error(request, 404, "thumbnail unavailable"),
             }
         }
         (false, "/preview/slide.html") => {
@@ -525,7 +525,7 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                     let response = Response::from_string(html).with_header(kind).with_header(policy);
                     let _ = request.respond(response);
                 }
-                None => respond_error(request, 404, "pré-visualização indisponível"),
+                None => respond_error(request, 404, "preview unavailable"),
             }
         }
         (false, _) if route.starts_with("/preview/") => {
@@ -535,21 +535,21 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
                     let kind = Header::from_bytes("Content-Type", kind).unwrap();
                     let _ = request.respond(Response::from_data(bytes).with_header(kind));
                 }
-                None => respond_error(request, 404, "arquivo não encontrado"),
+                None => respond_error(request, 404, "file not found"),
             }
         }
         (true, "/api/save") | (true, "/api/preview") => {
             let mut body = String::new();
             if request.as_reader().take(16 << 20).read_to_string(&mut body).is_err() {
-                return respond_error(request, 400, "corpo inválido");
+                return respond_error(request, 400, "invalid body");
             }
             let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
             let entries = parse_entries(&parsed["slides"], app.deck.slides.len());
             let (Some(entries), Some(generation)) = (entries, parsed["generation"].as_u64()) else {
-                return respond_error(request, 400, "pedido inválido");
+                return respond_error(request, 400, "invalid request");
             };
             if generation != app.generation {
-                return respond_error(request, 409, "o arquivo foi recarregado; atualize a página");
+                return respond_error(request, 409, "the file was reloaded; refresh the page");
             }
             if route == "/api/preview" {
                 let index = parsed["index"].as_u64().unwrap_or(0) as usize;
@@ -590,6 +590,6 @@ fn handle(mut request: Request, app: &Mutex<App>, render: Option<&Sender<()>>, p
             let body = app.status_json();
             respond_json(request, 200, body);
         }
-        _ => respond_error(request, 404, "não encontrado"),
+        _ => respond_error(request, 404, "not found"),
     }
 }

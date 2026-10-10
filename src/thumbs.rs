@@ -91,7 +91,7 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<()>) {
                     app.has_thumb.iter_mut().for_each(|h| *h = false);
                     app.thumb_state = "mismatch";
                     app.thumb_msg = format!(
-                        "o Marp gerou {} lâminas, mas o marp-order encontrou {}",
+                        "Marp rendered {} slides, but marp-order found {}",
                         images.len(),
                         order.len()
                     );
@@ -124,13 +124,13 @@ fn render(config: &Config, deck: &Path, work: &Path) -> Result<Vec<PathBuf>, Str
         .current_dir(deck.parent().unwrap_or(Path::new(".")))
         .stdin(Stdio::null())
         .output()
-        .map_err(|e| format!("não foi possível executar `{}`: {e}", config.cmd.join(" ")))?;
+        .map_err(|e| format!("could not run `{}`: {e}", config.cmd.join(" ")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
         let tail = lines[lines.len().saturating_sub(3)..].join(" | ");
-        return Err(format!("o marp-cli falhou: {tail}"));
+        return Err(format!("marp-cli failed: {tail}"));
     }
 
     let mut images: Vec<PathBuf> = fs::read_dir(work)

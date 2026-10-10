@@ -21,8 +21,6 @@ without touching the content of the slides.
   where it is.
 - **Safe**: automatic backup, atomic writes and detection of external edits.
 
-> The interface is currently in Portuguese.
-
 ## Requirements
 
 | For | You need |
@@ -71,12 +69,12 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Duplicate / remove | `Ctrl+D` / `Delete` |
 | Undo / redo | `Ctrl+Z` / `Ctrl+Y` |
 | Edit the content | double-click |
-| Discard changes | **Descartar** button |
+| Discard changes | **Discard** button |
 | Save to the file | `Ctrl+S` |
 | Reload the file from disk | `Ctrl+R` |
 
 Each card shows its new position and, if the slide has moved, the position it has in the
-file (`era 8`, "was 8").
+file (`was 8`).
 
 ### Editing a slide
 
@@ -86,12 +84,12 @@ preview is redone on every change (a few hundred milliseconds).
 
 | Action | How |
 |---|---|
-| Apply the edit | `Ctrl+Enter` or **Aplicar** |
+| Apply the edit | `Ctrl+Enter` or **Apply** |
 | Apply and write the file | `Ctrl+S` |
-| Cancel | `Esc` or **Cancelar** |
+| Cancel | `Esc` or **Cancel** |
 
 Applying does not write the file: the edit stays pending, like a reordering, and can be
-undone with `Ctrl+Z`. The card gets an **editada** ("edited") tag, and its thumbnail is
+undone with `Ctrl+Z`. The card gets an **edited** tag, and its thumbnail is
 refreshed when you save. Writing `---` inside a slide splits it in two; the new slides
 show up in the grid after saving.
 

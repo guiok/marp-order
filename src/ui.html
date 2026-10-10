@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -94,44 +94,44 @@
 <header>
   <h1 id="file"></h1>
   <span id="info"></span>
-  <label class="size">Tamanho <input id="size" type="range" min="140" max="520" step="20" value="260"></label>
-  <button id="undo" title="Desfazer (Ctrl+Z)">↶ Desfazer</button>
-  <button id="redo" title="Refazer (Ctrl+Y)">↷ Refazer</button>
-  <button id="dup" title="Duplicar selecionadas (Ctrl+D)">Duplicar</button>
-  <button id="del" title="Remover selecionadas (Delete)">Remover</button>
-  <button id="discard" title="Voltar à ordem gravada no arquivo">Descartar</button>
-  <button id="save" class="primary" title="Gravar a nova ordem no arquivo (Ctrl+S)">Salvar</button>
+  <label class="size">Size <input id="size" type="range" min="140" max="520" step="20" value="260"></label>
+  <button id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+  <button id="redo" title="Redo (Ctrl+Y)">↷ Redo</button>
+  <button id="dup" title="Duplicate selected (Ctrl+D)">Duplicate</button>
+  <button id="del" title="Remove selected (Delete)">Remove</button>
+  <button id="discard" title="Go back to what is saved in the file">Discard</button>
+  <button id="save" class="primary" title="Write the changes to the file (Ctrl+S)">Save</button>
 </header>
 
 <div id="external" class="banner warn" hidden>
-  <span>O arquivo foi alterado fora do marp-order.</span>
-  <button id="reload" title="Recarregar do disco (Ctrl+R)">Recarregar do disco (Ctrl+R)</button>
+  <span>The file was changed outside marp-order.</span>
+  <button id="reload" title="Reload from disk (Ctrl+R)">Reload from disk (Ctrl+R)</button>
 </div>
 <div id="mismatch" class="banner danger" hidden><span></span></div>
-<div id="thumbnote" class="banner warn" hidden><span></span><button id="rethumb">Tentar de novo</button></div>
-<div id="offline" class="banner danger" hidden><span>O marp-order foi encerrado. Inicie-o novamente para continuar.</span></div>
+<div id="thumbnote" class="banner warn" hidden><span></span><button id="rethumb">Try again</button></div>
+<div id="offline" class="banner danger" hidden><span>marp-order has stopped. Start it again to continue.</span></div>
 
 </div>
 
 <main id="grid"><div id="bar"></div></main>
 
 <p class="help">
-  Arraste para reordenar · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+clique seleciona várias ·
-  <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> move a seleção · duplo clique edita ·
-  <kbd>Ctrl</kbd>+<kbd>R</kbd> recarrega o arquivo do disco ·
-  <span class="flag">⚠</span> indica lâmina cujo efeito depende da posição (passe o mouse para ver).
+  Drag to reorder · <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click selects several ·
+  <kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> moves the selection · double-click edits ·
+  <kbd>Ctrl</kbd>+<kbd>R</kbd> reloads the file from disk ·
+  <span class="flag">⚠</span> marks a slide whose effect depends on its position (hover to see why).
 </p>
 
 <dialog id="editor">
   <div class="bar"><strong id="edtitle"></strong><span id="edstatus" class="grow"></span></div>
   <div class="panes">
-    <textarea id="edtext" spellcheck="false" aria-label="Markdown da lâmina"></textarea>
+    <textarea id="edtext" spellcheck="false" aria-label="Slide Markdown"></textarea>
     <div id="edview"></div>
   </div>
   <div class="bar">
-    <span class="grow"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> aplica · <kbd>Ctrl</kbd>+<kbd>S</kbd> aplica e salva · <kbd>Esc</kbd> cancela</span>
-    <button id="edcancel">Cancelar</button>
-    <button id="edapply" class="primary">Aplicar</button>
+    <span class="grow"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> applies · <kbd>Ctrl</kbd>+<kbd>S</kbd> applies and saves · <kbd>Esc</kbd> cancels</span>
+    <button id="edcancel">Cancel</button>
+    <button id="edapply" class="primary">Apply</button>
   </div>
 </dialog>
 <div id="toast"></div>
@@ -241,7 +241,7 @@ function makeCard(item) {
 function paint(el, item) {
   const text = titleOf(item);
   const title = el.querySelector('.title');
-  title.textContent = text || '(sem título)';
+  title.textContent = text || '(untitled)';
   title.title = text;
   title.classList.toggle('empty', !text);
   el.classList.toggle('changed', item.text != null);
@@ -253,8 +253,8 @@ function paint(el, item) {
   face.dataset.key = key;
   const badge = document.createElement('span');
   badge.className = 'edited';
-  badge.textContent = 'editada';
-  badge.title = 'A miniatura é atualizada ao salvar.';
+  badge.textContent = 'edited';
+  badge.title = 'The thumbnail is refreshed when you save.';
   let content;
   if (src) {
     content = document.createElement('img');
@@ -262,7 +262,7 @@ function paint(el, item) {
   } else {
     content = document.createElement('div');
     content.className = 'text';
-    content.textContent = textOf(item).slice(0, 600) || '(lâmina vazia)';
+    content.textContent = textOf(item).slice(0, 600) || '(empty slide)';
   }
   face.replaceChildren(content, badge);
 }
@@ -279,7 +279,7 @@ function render() {
     el.querySelector('.num').textContent = i + 1;
     const origin = S.disk_order.indexOf(item.id);
     const was = el.querySelector('.was');
-    was.textContent = origin < 0 ? 'nova' : origin !== i ? `era ${origin + 1}` : '';
+    was.textContent = origin < 0 ? 'new' : origin !== i ? `was ${origin + 1}` : '';
     if (grid.children[i + 1] !== el) grid.insertBefore(el, grid.children[i + 1] || null);
   });
   renderSel();
@@ -290,11 +290,11 @@ function renderSel() {
   const dirty = isDirty();
   const removed = S.disk_order.filter((id) => !items.some((it) => it.id === id)).length;
   const info = $('#info');
-  info.textContent = `${items.length} lâminas` + (sel.size > 1 ? ` · ${sel.size} selecionadas` : '');
+  info.textContent = `${items.length} slide${items.length === 1 ? '' : 's'}` + (sel.size > 1 ? ` · ${sel.size} selected` : '');
   if (dirty) {
     const mark = document.createElement('span');
     mark.className = 'dirty';
-    mark.textContent = ' · alterações não salvas' + (removed ? ` (${removed} removida${removed > 1 ? 's' : ''})` : '');
+    mark.textContent = ' · unsaved changes' + (removed ? ` (${removed} removed)` : '');
     info.append(mark);
   }
   $('#save').disabled = !dirty;
@@ -308,11 +308,11 @@ function showStatus(status) {
   $('#external').hidden = !status.external_change;
   const t = status.thumbs;
   $('#mismatch').hidden = t.state !== 'mismatch';
-  $('#mismatch span').textContent = 'Atenção: ' + t.message +
-    '. A divisão das lâminas pode estar incorreta — confira o arquivo antes de salvar uma nova ordem.';
+  $('#mismatch span').textContent = 'Warning: ' + t.message +
+    '. The slides may be split incorrectly — check the file before saving a new order.';
   $('#thumbnote').hidden = t.state !== 'error';
-  $('#thumbnote span').textContent = 'Miniaturas indisponíveis (' + t.message + '). Mostrando o texto das lâminas.';
-  $('#save').textContent = t.state === 'rendering' ? 'Salvar (gerando miniaturas…)' : 'Salvar';
+  $('#thumbnote span').textContent = 'Thumbnails unavailable (' + t.message + '). Showing the slide text instead.';
+  $('#save').textContent = t.state === 'rendering' ? 'Save (rendering thumbnails…)' : 'Save';
 }
 
 // ---- operações sobre a ordem -------------------------------------------
@@ -449,7 +449,7 @@ let editing = null;      // {k, initial, busy, again}
 function openEditor(item) {
   editing = { k: item.k, initial: textOf(item) };
   edtext.value = editing.initial;
-  $('#edtitle').textContent = `Lâmina ${items.indexOf(item) + 1}`;
+  $('#edtitle').textContent = `Slide ${items.indexOf(item) + 1}`;
   edview.replaceChildren();
   editor.showModal();
   edtext.focus();
@@ -468,7 +468,7 @@ async function refreshPreview() {
   if (!session) return;
   if (session.busy) { session.again = true; return; }
   session.busy = true;
-  edStatus('atualizando…');
+  edStatus('updating…');
   try {
     const slides = items.map((it) => (it.k === session.k ? { id: it.id, text: edtext.value } : entry(it)));
     const index = items.findIndex((it) => it.k === session.k);
@@ -479,7 +479,7 @@ async function refreshPreview() {
       else edStatus(body.error, true);
     }
   } catch {
-    if (editing === session) edStatus('sem resposta do marp-order', true);
+    if (editing === session) edStatus('no response from marp-order', true);
   }
   session.busy = false;
   if (editing === session && session.again) { session.again = false; refreshPreview(); }
@@ -489,7 +489,7 @@ async function refreshPreview() {
 function showPreview(src) {
   const next = document.createElement('iframe');
   next.className = 'loading';
-  next.title = 'Pré-visualização da lâmina';
+  next.title = 'Slide preview';
   next.onload = () => {
     for (const old of [...edview.children]) if (old !== next) old.remove();
     next.classList.remove('loading');
@@ -515,7 +515,7 @@ function applyEdit() {
 
 function cancelEdit() {
   const changed = edtext.value.trim() !== editing.initial.trim();
-  if (!changed || confirm('Descartar as alterações desta lâmina?')) closeEditor();
+  if (!changed || confirm('Discard the changes to this slide?')) closeEditor();
 }
 
 let edTimer = null;
@@ -543,21 +543,21 @@ async function save(force) {
   if (!isDirty()) return;
   const order = ids();
   const removed = S.disk_order.filter((id) => !order.includes(id)).length;
-  if (removed && !force && !confirm(`${removed} lâmina(s) serão removidas do arquivo. Continuar?`)) return;
+  if (removed && !force && !confirm(`${removed} slide(s) will be removed from the file. Continue?`)) return;
   let res;
   try {
     res = await post('/api/save', { generation: S.generation, slides: items.map(entry), force: !!force });
   } catch {
-    return toast('Não foi possível falar com o marp-order.');
+    return toast('Could not reach marp-order.');
   }
   const body = await res.json();
   if (res.status === 409 && body.error === 'external_change') {
-    if (confirm('O arquivo foi alterado fora do marp-order desde que foi aberto.\n\n' +
-        'OK: sobrescrever com a nova ordem (uma cópia do arquivo atual é guardada).\n' +
-        'Cancelar: não salvar.')) return save(true);
+    if (confirm('The file was changed outside marp-order since it was opened.\n\n' +
+        'OK: overwrite it with your changes (a copy of the current file is kept).\n' +
+        'Cancel: do not save.')) return save(true);
     return;
   }
-  if (!res.ok) return toast('Erro ao salvar: ' + body.error);
+  if (!res.ok) return toast('Could not save: ' + body.error);
   if (body.generation !== S.generation) {
     // houve edição de conteúdo: o servidor releu o arquivo e renumerou as lâminas
     adopt(await (await fetch('/api/state')).json());
@@ -567,16 +567,16 @@ async function save(force) {
     render();
     showStatus(body);
   }
-  toast(`Arquivo salvo. Backup do original: ${body.backup}`);
+  toast(`File saved. Backup of the original: ${body.backup}`);
 }
 
 async function reload() {
-  if (isDirty() && !confirm('Recarregar descarta as alterações ainda não salvas. Continuar?')) return;
+  if (isDirty() && !confirm('Reloading discards your unsaved changes. Continue?')) return;
   const res = await post('/api/reload');
   const body = await res.json();
-  if (!res.ok) return toast('Erro ao recarregar: ' + body.error);
+  if (!res.ok) return toast('Could not reload: ' + body.error);
   adopt(body);
-  toast('Arquivo recarregado do disco.');
+  toast('File reloaded from disk.');
 }
 
 async function poll() {
