@@ -168,6 +168,7 @@ marp-order [opções] [apresentacao.md ...] [-- argumentos do marp-cli]
   --port <n>         porta do servidor local (padrão: escolhida pelo sistema)
   --no-open          não abre o navegador automaticamente
   --no-thumbs        não gera miniaturas (mostra só o texto das lâminas)
+  --no-cache         não guarda miniaturas em disco entre execuções
   --marp-cmd <cmd>   comando do marp-cli (padrão: `marp` ou `npx @marp-team/marp-cli`)
   -h, --help         mostra a ajuda
   -V, --version      mostra a versão
@@ -196,6 +197,11 @@ O comando do marp-cli também pode ser definido pela variável `MARP_ORDER_MARP_
 - **Edição externa.** Se o arquivo mudar no seu editor enquanto o marp-order está aberto,
   o salvamento é bloqueado até você escolher entre recarregar ou sobrescrever. O mesmo
   acontece quando o arquivo foi salvo por outra janela do marp-order.
+- **Cache de miniaturas.** As miniaturas dos últimos 40 decks ficam em
+  `~/.cache/marp-order/` (`%LOCALAPPDATA%\marp-order` no Windows), de modo que um
+  arquivo que não mudou mostra as lâminas na hora ao ser reaberto. Elas são refeitas em
+  segundo plano mesmo assim, para o caso de uma imagem ou o tema ter mudado. `--no-cache`
+  desliga isso.
 - **Conferência com o Marp.** As miniaturas são refeitas a cada salvamento; se o Marp
   enxergar um número de lâminas diferente do marp-order, aparece um alerta.
 

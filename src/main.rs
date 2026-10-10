@@ -1,3 +1,4 @@
+mod cache;
 mod deck;
 mod links;
 mod preview;
@@ -16,6 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use tiny_http::{Header, Method, Request, Response, Server};
 
+use cache::Cache;
 use deck::{Deck, Entry};
 use preview::Preview;
 use thumbs::Job;
@@ -34,6 +36,7 @@ Options:
   --port <n>         local server port (default: chosen by the system)
   --no-open          do not open the browser automatically
   --no-thumbs        do not render thumbnails (show only the slide text)
+  --no-cache         do not keep thumbnails on disk between runs
   --marp-cmd <cmd>   marp-cli command (default: `marp` or `npx @marp-team/marp-cli`)
   -h, --help         show this help
   -V, --version      show the version
@@ -46,6 +49,7 @@ struct Args {
     port: u16,
     open: bool,
     thumbs: bool,
+    cache: bool,
     marp_cmd: Option<String>,
     marp_extra: Vec<String>,
 }
@@ -87,6 +91,8 @@ pub struct App {
     render: Option<Sender<Job>>,
     /// Editor preview; `None` when there is no marp-cli.
     preview: Option<Preview>,
+    /// Thumbnails kept between runs; `None` with `--no-cache` or without thumbnails.
+    pub cache: Option<Cache>,
 }
 
 impl App {
@@ -123,6 +129,7 @@ impl App {
             drafts: Vec::new(),
             path: path.clone(),
         });
+        self.warm(id);
         self.rethumb(id);
         self.remember_recent(&path);
         self.remember_session();
@@ -212,6 +219,25 @@ impl App {
         keys
     }
 
+    /// Shows the thumbnails kept from an earlier run, if the file has not changed since.
+    /// A fresh render still follows, in case an image or the theme changed.
+    fn warm(&mut self, id: u64) {
+        let Some(cache) = self.cache.clone() else { return };
+        let Some(doc) = self.doc(id) else { return };
+        if doc.has_thumb.iter().any(|&has| has) || doc.disk_order.is_empty() {
+            return;
+        }
+        let targets: Vec<PathBuf> = doc
+            .disk_order
+            .iter()
+            .map(|slide| doc.thumb_dir.join(format!("{slide}.jpeg")))
+            .collect();
+        if fs::create_dir_all(&doc.thumb_dir).is_ok() && cache.load(&doc.path, doc.content_hash(), &targets) {
+            doc.has_thumb.iter_mut().for_each(|has| *has = true);
+            doc.thumb_version += 1;
+        }
+    }
+
     fn rethumb(&self, id: u64) {
         if let Some(tx) = &self.render {
             let _ = tx.send(Job::Disk(id));
@@ -264,6 +290,11 @@ enum SaveError {
 }
 
 impl Doc {
+    /// Hash of the file content the slides in memory came from.
+    pub fn content_hash(&self) -> u64 {
+        cache::hash(&self.last_disk)
+    }
+
     fn external_change(&mut self) -> bool {
         let meta = file_signature(&self.path);
         if meta.is_some() && meta == self.last_meta {
@@ -473,6 +504,17 @@ fn browse(target: &Path) -> Result<Value, String> {
 
 const RECENT_MAX: usize = 12;
 
+/// Folder for the thumbnails kept between runs (`~/.cache/marp-order/thumbs`).
+fn cache_dir() -> Option<PathBuf> {
+    let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let base = match var("XDG_CACHE_HOME") {
+        Some(dir) => dir,
+        None if cfg!(windows) => var("LOCALAPPDATA")?,
+        None => var("HOME")?.join(".cache"),
+    };
+    Some(base.join("marp-order").join("thumbs"))
+}
+
 /// User configuration folder (`~/.config/marp-order`).
 fn config_dir() -> Option<PathBuf> {
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
@@ -615,6 +657,7 @@ fn parse_args() -> Result<Args, String> {
         port: 0,
         open: true,
         thumbs: true,
+        cache: true,
         marp_cmd: std::env::var("MARP_ORDER_MARP_CMD").ok(),
         marp_extra: Vec::new(),
     };
@@ -631,6 +674,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--no-open" => args.open = false,
             "--no-thumbs" => args.thumbs = false,
+            "--no-cache" => args.cache = false,
             "--port" => {
                 args.port = it
                     .next()
@@ -674,6 +718,10 @@ fn run() -> Result<(), String> {
         .as_ref()
         .map(|cmd| Preview::new(cmd.clone(), args.marp_extra.clone(), tmp.join("preview")));
 
+    let cache = match (&marp_cmd, args.thumbs && args.cache) {
+        (Some(cmd), true) => cache_dir().map(|dir| Cache::new(dir, cmd, &args.marp_extra)),
+        _ => None,
+    };
     let app = Arc::new(Mutex::new(App {
         docs: Vec::new(),
         next_id: 1,
@@ -682,6 +730,7 @@ fn run() -> Result<(), String> {
         thumb_start,
         render: None,
         preview,
+        cache,
     }));
     if let Some(cmd) = marp_cmd.filter(|_| args.thumbs) {
         let config = thumbs::Config {
@@ -1042,8 +1091,9 @@ fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
             let doc = app.doc(id).unwrap();
             match doc.reload() {
                 Ok(()) => {
-                    let state = doc.state_json();
+                    app.warm(id);
                     app.rethumb(id);
+                    let state = app.doc(id).unwrap().state_json();
                     respond_json(request, 200, state);
                 }
                 Err(message) => respond_error(request, 500, &message),
@@ -1100,6 +1150,7 @@ mod tests {
                 thumb_start: ("off", String::new()),
                 render: None,
                 preview: None,
+                cache: None,
             }
         }
     }
@@ -1227,6 +1278,28 @@ mod tests {
         fs::remove_file(&b).unwrap();
         assert_eq!(again.recent_files(), [a.display().to_string()]);
         assert!(again.open(&b).is_err());
+    }
+
+    #[test]
+    fn thumbnails_from_an_earlier_run_show_up_when_the_file_is_unchanged() {
+        let sandbox = Sandbox::new();
+        let path = sandbox.file("deck.md", DECK);
+        let changed = sandbox.file("changed.md", DECK);
+        let cache = Cache::new(sandbox.0.join("cache"), &["marp".to_string()], &[]);
+        let images: Vec<PathBuf> = (0..3).map(|n| sandbox.file(&format!("img/{n}.jpeg"), &format!("slide {n}"))).collect();
+        cache.store(&path, cache::hash(DECK.as_bytes()), &images);
+        cache.store(&changed, cache::hash(b"what the file used to be"), &images);
+
+        let mut app = sandbox.app();
+        app.cache = Some(cache);
+        let id = app.open(&path).unwrap();
+        let doc = app.doc(id).unwrap();
+        assert_eq!(doc.has_thumb, [true, true, true]);
+        assert_eq!(fs::read_to_string(doc.thumb_dir.join("2.jpeg")).unwrap(), "slide 2");
+        assert_eq!(doc.thumb_version, 1);
+
+        let id = app.open(&changed).unwrap();
+        assert_eq!(app.doc(id).unwrap().has_thumb, [false, false, false]);
     }
 
     #[test]

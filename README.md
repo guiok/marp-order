@@ -165,6 +165,7 @@ marp-order [options] [presentation.md ...] [-- marp-cli arguments]
   --port <n>         local server port (default: chosen by the system)
   --no-open          do not open the browser automatically
   --no-thumbs        do not render thumbnails (show only the slide text)
+  --no-cache         do not keep thumbnails on disk between runs
   --marp-cmd <cmd>   marp-cli command (default: `marp` or `npx @marp-team/marp-cli`)
   -h, --help         show help
   -V, --version      show the version
@@ -194,6 +195,10 @@ The marp-cli command can also be set with the `MARP_ORDER_MARP_CMD` environment 
 - **External edits.** If the file changes in your editor while marp-order is open, saving
   is blocked until you choose between reloading and overwriting. The same happens when
   the file was saved from another marp-order window.
+- **Thumbnail cache.** The thumbnails of the last 40 decks are kept in
+  `~/.cache/marp-order/` (`%LOCALAPPDATA%\marp-order` on Windows), so a file that has
+  not changed shows its slides immediately when reopened. They are still re-rendered in
+  the background, in case an image or the theme changed. `--no-cache` turns this off.
 - **Cross-check with Marp.** Thumbnails are re-rendered on every save; if Marp sees a
   different number of slides than marp-order does, a warning is shown.
 

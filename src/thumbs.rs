@@ -103,10 +103,11 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
                         doc.disk_order.clone(),
                         doc.path.clone(),
                         doc.thumb_dir.clone(),
+                        doc.content_hash(),
                     )
                 })
             };
-            let Some((generation, save_seq, order, path, dir)) = job else {
+            let Some((generation, save_seq, order, path, dir, content)) = job else {
                 break; // the file was closed
             };
             let work = dir.join("render");
@@ -117,6 +118,7 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
             };
 
             let mut app = app.lock().unwrap();
+            let cache = app.cache.clone();
             let Some(app) = app.doc(id) else {
                 break;
             };
@@ -132,6 +134,12 @@ fn worker(app: Arc<Mutex<App>>, config: Config, rx: Receiver<Job>) {
                         }
                     }
                     app.thumb_state = "ready";
+                    if let Some(cache) = cache {
+                        // one image per slide in file order, for the next time it is opened
+                        let kept: Vec<PathBuf> =
+                            order.iter().map(|id| dir.join(format!("{id}.jpeg"))).collect();
+                        cache.store(&path, content, &kept);
+                    }
                 }
                 Ok(images) => {
                     // Marp split the deck differently from us: the mapping cannot be trusted.

@@ -16,6 +16,7 @@ presentation.md ──► deck.rs (parse) ──► main.rs (state + HTTP) ◄�
 | `src/deck.rs` | Splits the file into head + slides and composes it again in another order. No I/O. |
 | `src/main.rs` | Command line, state, HTTP routes, backup and atomic write. |
 | `src/thumbs.rs` | Thread that calls marp-cli and maps each image to a slide. |
+| `src/cache.rs` | Thumbnails kept on disk between runs. |
 | `src/links.rs` | Rewrites relative paths of slides copied between folders. |
 | `src/preview.rs` | Live preview for the editor, with a persistent `marp --watch`. |
 | `src/ui.html` | Interface (plain HTML, CSS and JavaScript), embedded in the binary. |
@@ -131,6 +132,12 @@ the split may be wrong — the safety net for cases the parser does not cover.
 
 A render is triggered on open, on reload and after every save. If the file changes while
 rendering, the result is discarded and the render is redone.
+
+After a successful render the images are also copied to the cache
+(`~/.cache/marp-order/thumbs/<hash of path and marp-cli command>/`), with the hash of the
+deck content they came from. When a file is opened or reloaded and that hash still
+matches, the cached images are shown at once; the render still runs, since an image or
+a theme file may have changed without the deck changing.
 
 Edited or added slides are not on disk yet. For those the interface sends
 `POST /api/draft` with the pending state; the server writes the draft to a hidden file
