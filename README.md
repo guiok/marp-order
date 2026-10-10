@@ -1,36 +1,40 @@
 # marp-order
 
-Reorganize as lâminas de uma apresentação [Marp](https://marp.app) arrastando miniaturas
-em uma matriz, edite o conteúdo de cada uma com pré-visualização ao vivo — e o arquivo
-`.md` é reescrito com o resultado.
+**English** · [Português](README.pt-BR.md)
 
-![Matriz de lâminas do marp-order](docs/screenshot.png)
+Reorder the slides of a [Marp](https://marp.app) presentation by dragging thumbnails
+around a grid, edit any slide with a live preview, and have the `.md` file rewritten
+with the result.
 
-Reordenar um deck Marp à mão significa recortar e colar blocos de Markdown entre linhas
-`---`, sem ver o resultado. O `marp-order` mostra o deck inteiro de uma vez, como o
-"classificador de slides" dos editores de apresentação, e cuida da reescrita do arquivo
-sem alterar o conteúdo das lâminas.
+![marp-order demo](docs/demo.gif)
 
-- **Um binário só**, escrito em Rust; a interface roda no seu navegador, em `localhost`.
-- **Miniaturas reais**, renderizadas pelo marp-cli com o tema da sua apresentação.
-- **Editor com pré-visualização ao vivo**: duplo clique abre o Markdown da lâmina e o
-  resultado é redesenhado enquanto você digita.
-- **Não reformata nada**: lâminas não editadas são movidas byte a byte; o front-matter
-  fica onde está.
-- **Seguro**: backup automático, gravação atômica e detecção de edição externa.
+Reordering a Marp deck by hand means cutting and pasting blocks of Markdown between
+`---` lines without seeing the result. `marp-order` shows the whole deck at once, like
+the "slide sorter" view of presentation software, and takes care of rewriting the file
+without touching the content of the slides.
 
-## Requisitos
+- **A single binary**, written in Rust; the interface runs in your browser on `localhost`.
+- **Real thumbnails**, rendered by marp-cli with your presentation's theme.
+- **Editor with live preview**: double-click opens the slide's Markdown and the result
+  is redrawn as you type.
+- **No reformatting**: unedited slides are moved byte for byte; the front matter stays
+  where it is.
+- **Safe**: automatic backup, atomic writes and detection of external edits.
 
-| Para | Precisa de |
+> The interface is currently in Portuguese.
+
+## Requirements
+
+| For | You need |
 |---|---|
-| Compilar | [Rust](https://rustup.rs) 1.80 ou mais novo |
-| Miniaturas e pré-visualização (opcional) | [marp-cli](https://github.com/marp-team/marp-cli) e Chrome, Chromium ou Edge |
+| Building | [Rust](https://rustup.rs) 1.80 or newer |
+| Thumbnails and live preview (optional) | [marp-cli](https://github.com/marp-team/marp-cli) and Chrome, Chromium or Edge |
 
-Sem o marp-cli o programa funciona do mesmo jeito, mostrando o texto de cada lâmina no
-lugar da miniatura; o editor abre, mas sem a pré-visualização. O navegador é aberto com `xdg-open` (Linux); em outros sistemas, abra
-manualmente o endereço mostrado no terminal.
+Without marp-cli the program still works, showing the text of each slide instead of a
+thumbnail; the editor opens, but without the preview. The browser is opened with
+`xdg-open` (Linux); on other systems, open the address printed in the terminal yourself.
 
-## Instalação
+## Installation
 
 ```bash
 git clone https://github.com/guiok/marp-order.git
@@ -38,137 +42,144 @@ cd marp-order
 cargo install --path .
 ```
 
-Isso instala o binário em `~/.cargo/bin`. Como alternativa, `make install` compila e copia
-para `~/.local/bin`.
+This installs the binary in `~/.cargo/bin`. Alternatively, `make install` builds it and
+copies it to `~/.local/bin`.
 
-Para as miniaturas:
+For thumbnails:
 
 ```bash
 npm install -g @marp-team/marp-cli
 ```
 
-Se `marp` não estiver no PATH, o programa tenta `npx @marp-team/marp-cli`, que baixa o
-pacote na primeira execução.
+If `marp` is not on the PATH, the program falls back to `npx @marp-team/marp-cli`, which
+downloads the package on first run.
 
-## Uso
-
-```bash
-marp-order apresentacao.md
-```
-
-O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o programa com
-`Ctrl+C` no terminal.
-
-| Ação | Como |
-|---|---|
-| Reordenar | arrastar o cartão (ou vários selecionados) |
-| Selecionar várias | `Ctrl`+clique, `Shift`+clique, `Ctrl+A` |
-| Mover pelo teclado | `Alt+←` / `Alt+→`, `Alt+Home` / `Alt+End` |
-| Duplicar / remover | `Ctrl+D` / `Delete` |
-| Desfazer / refazer | `Ctrl+Z` / `Ctrl+Y` |
-| Editar o conteúdo | duplo clique |
-| Descartar alterações | botão **Descartar** |
-| Salvar no arquivo | `Ctrl+S` |
-| Recarregar o arquivo do disco | `Ctrl+R` |
-
-Cada cartão mostra a posição nova e, se a lâmina mudou de lugar, a posição que ela tem no
-arquivo (`era 8`).
-
-### Editar uma lâmina
-
-Duplo clique em um cartão abre o editor: o Markdown da lâmina à esquerda e, à direita, a
-lâmina renderizada pelo Marp com o tema, as imagens e as diretivas do deck. A
-pré-visualização é refeita a cada alteração (algumas centenas de milissegundos).
-
-| Ação | Como |
-|---|---|
-| Aplicar a edição | `Ctrl+Enter` ou **Aplicar** |
-| Aplicar e gravar o arquivo | `Ctrl+S` |
-| Cancelar | `Esc` ou **Cancelar** |
-
-Aplicar não grava o arquivo: a edição fica pendente, como uma reordenação, e pode ser
-desfeita com `Ctrl+Z`. O cartão ganha a etiqueta **editada**, e a miniatura dele é
-atualizada quando você salva. Escrever `---` dentro de uma lâmina a divide em duas; as
-novas lâminas aparecem na matriz depois de salvar.
-
-### Opções
-
-```
-marp-order [opções] <apresentacao.md> [-- argumentos do marp-cli]
-
-  --port <n>         porta do servidor local (padrão: escolhida pelo sistema)
-  --no-open          não abre o navegador automaticamente
-  --no-thumbs        não gera miniaturas (mostra só o texto das lâminas)
-  --marp-cmd <cmd>   comando do marp-cli (padrão: `marp` ou `npx @marp-team/marp-cli`)
-  -h, --help         mostra a ajuda
-  -V, --version      mostra a versão
-```
-
-O que vier depois de `--` é repassado ao marp-cli. Use para temas próprios:
+## Usage
 
 ```bash
-marp-order aula.md -- --theme-set tema.css
+marp-order presentation.md
 ```
 
-O comando do marp-cli também pode ser definido pela variável `MARP_ORDER_MARP_CMD`.
+The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the program with
+`Ctrl+C` in the terminal.
 
-## O que acontece com o seu arquivo
+| Action | How |
+|---|---|
+| Reorder | drag the card (or several selected cards) |
+| Select several | `Ctrl`+click, `Shift`+click, `Ctrl+A` |
+| Move with the keyboard | `Alt+←` / `Alt+→`, `Alt+Home` / `Alt+End` |
+| Duplicate / remove | `Ctrl+D` / `Delete` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Y` |
+| Edit the content | double-click |
+| Discard changes | **Descartar** button |
+| Save to the file | `Ctrl+S` |
+| Reload the file from disk | `Ctrl+R` |
 
-- **Front-matter fixo.** O bloco YAML inicial nunca é movido.
-- **Lâminas intactas.** O texto de cada lâmina não editada — incluindo notas do
-  apresentador e diretivas como `<!-- _class: lead -->` — é copiado byte a byte. Lâminas que continuam
-  vizinhas mantêm até o espaçamento entre elas, então o `git diff` mostra só o que mudou.
-- **Ida e volta exata.** Voltar à ordem original devolve o arquivo idêntico.
-- **Backup.** Antes da primeira gravação é criado `apresentacao.md.bak` (ou `.bak1`,
-  `.bak2`… se já existir).
-- **Gravação atômica.** O conteúdo vai para um arquivo temporário e é renomeado, de modo
-  que uma queda no meio não deixa o deck pela metade.
-- **Edição externa.** Se o arquivo mudar no seu editor enquanto o marp-order está aberto,
-  o salvamento é bloqueado até você escolher entre recarregar ou sobrescrever.
-- **Conferência com o Marp.** As miniaturas são refeitas a cada salvamento; se o Marp
-  enxergar um número de lâminas diferente do marp-order, aparece um alerta.
+Each card shows its new position and, if the slide has moved, the position it has in the
+file (`era 8`, "was 8").
 
-### O aviso ⚠
+### Editing a slide
 
-No Marp, uma diretiva local escrita **sem** `_` vale da lâmina em que aparece até o fim:
+Double-clicking a card opens the editor: the slide's Markdown on the left and, on the
+right, the slide rendered by Marp with the deck's theme, images and directives. The
+preview is redone on every change (a few hundred milliseconds).
+
+| Action | How |
+|---|---|
+| Apply the edit | `Ctrl+Enter` or **Aplicar** |
+| Apply and write the file | `Ctrl+S` |
+| Cancel | `Esc` or **Cancelar** |
+
+Applying does not write the file: the edit stays pending, like a reordering, and can be
+undone with `Ctrl+Z`. The card gets an **editada** ("edited") tag, and its thumbnail is
+refreshed when you save. Writing `---` inside a slide splits it in two; the new slides
+show up in the grid after saving.
+
+### Options
+
+```
+marp-order [options] <presentation.md> [-- marp-cli arguments]
+
+  --port <n>         local server port (default: chosen by the system)
+  --no-open          do not open the browser automatically
+  --no-thumbs        do not render thumbnails (show only the slide text)
+  --marp-cmd <cmd>   marp-cli command (default: `marp` or `npx @marp-team/marp-cli`)
+  -h, --help         show help
+  -V, --version      show the version
+```
+
+Anything after `--` is passed on to marp-cli. Use it for custom themes:
+
+```bash
+marp-order talk.md -- --theme-set theme.css
+```
+
+The marp-cli command can also be set with the `MARP_ORDER_MARP_CMD` environment variable.
+
+## What happens to your file
+
+- **Front matter stays put.** The leading YAML block is never moved.
+- **Slides are left intact.** The text of every unedited slide — including speaker notes
+  and directives such as `<!-- _class: lead -->` — is copied byte for byte. Slides that
+  remain neighbours keep even the spacing between them, so `git diff` shows only what
+  changed.
+- **Exact round trip.** Going back to the original order gives you the identical file.
+- **Backup.** Before the first write, `presentation.md.bak` is created (or `.bak1`,
+  `.bak2`… if it already exists).
+- **Atomic write.** The content goes to a temporary file that is then renamed, so a crash
+  halfway through does not leave you with half a deck.
+- **External edits.** If the file changes in your editor while marp-order is open, saving
+  is blocked until you choose between reloading and overwriting.
+- **Cross-check with Marp.** Thumbnails are re-rendered on every save; if Marp sees a
+  different number of slides than marp-order does, a warning is shown.
+
+### The ⚠ warning
+
+In Marp, a local directive written **without** `_` applies from the slide where it
+appears to the end of the deck:
 
 ```markdown
-<!-- paginate: true -->   ← esta lâmina e todas as seguintes
-<!-- _class: lead -->     ← só esta lâmina
+<!-- paginate: true -->   ← this slide and all the following ones
+<!-- _class: lead -->     ← this slide only
 ```
 
-Mover uma lâmina com `paginate`, `class`, `header`, `footer`, `backgroundColor` etc. muda
-quais lâminas são afetadas. O marp-order não altera essas diretivas; ele marca o cartão
-com ⚠ para você conferir.
+Moving a slide that has `paginate`, `class`, `header`, `footer`, `backgroundColor` and so
+on changes which slides are affected. marp-order does not alter these directives; it
+marks the card with ⚠ so you can check.
 
-## Limitações
+## Limitations
 
-- **`headingDivider` e comentários.** Com `headingDivider`, o Marp não permite comentário
-  antes do título de uma lâmina que não seja a primeira: ele fica na lâmina anterior. Se a
-  primeira lâmina do deck tem um comentário assim e é movida, o comentário muda de lâmina.
-  O cartão é marcado com ⚠.
-- **Codificação.** O arquivo precisa estar em UTF-8.
-- **Histórico de desfazer.** Salvar edições de conteúdo relê o arquivo e reinicia o
-  histórico de desfazer/refazer. Salvar só reordenações preserva o histórico.
-- **Recursos da pré-visualização.** Imagens e fontes precisam estar na pasta do deck ou
-  abaixo dela; caminhos com `../` ou absolutos não aparecem no editor (as miniaturas e o
-  resultado final não são afetados).
-- **Front-matter.** O editor altera lâminas; o front-matter é editado no seu editor de texto.
-- **Uso local.** O servidor aceita apenas conexões de `127.0.0.1` e não tem autenticação;
-  não foi feito para ser exposto na rede.
+- **`headingDivider` and comments.** With `headingDivider`, Marp does not allow a comment
+  before the heading of any slide but the first: it stays in the previous slide. If the
+  first slide of the deck has such a comment and is moved, the comment changes slides.
+  The card is marked with ⚠.
+- **Encoding.** The file must be UTF-8.
+- **Undo history.** Saving content edits re-reads the file and resets the undo/redo
+  history. Saving only reorderings keeps it.
+- **Preview assets.** Images and fonts must be in the deck's folder or below it; paths
+  with `../` or absolute paths do not show up in the editor (thumbnails and the final
+  output are not affected).
+- **Front matter.** The editor changes slides; edit the front matter in your text editor.
+- **Local use.** The server only accepts connections from `127.0.0.1` and has no
+  authentication; it is not meant to be exposed on a network.
+- **Preview port.** While the editor preview is in use, marp-cli's watch mode opens its
+  own WebSocket server on port 37717.
 
-## Desenvolvimento
+## Development
 
 ```bash
-make test     # testes do parser e do writer
-make build    # binário de release em target/release/
-make abrir DECK=apresentacao.md
+make test     # parser and writer tests
+make build    # release binary in target/release/
+make abrir DECK=presentation.md
 ```
 
-A estrutura do código e as regras de divisão de lâminas estão descritas em
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md). Contribuições são bem-vindas: ao mexer no
-parser, acrescente um teste em `src/deck.rs` e confira o caso contra o marp-cli.
+To avoid repeating `DECK`, create a `local.mk` (ignored by git) containing
+`DECK := presentation.md`.
 
-## Licença
+The code structure and the slide-splitting rules are described in
+[docs/ARQUITETURA.md](docs/ARQUITETURA.md) (in Portuguese). Contributions are welcome:
+when changing the parser, add a test to `src/deck.rs` and check the case against marp-cli.
+
+## License
 
 [MIT](LICENSE)
