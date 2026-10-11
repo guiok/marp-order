@@ -89,7 +89,7 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Discard changes | **Discard** button |
 | Switch between English and Portuguese | **EN / PT** selector, top right |
 | Save to the file | `Ctrl+S` |
-| Reload the file from disk | `Ctrl+R` |
+| Reload the file from disk | `Ctrl+R`, or by itself with **Auto-reload** on |
 | Open another file | `Ctrl+O` or **+ Open** |
 | Edit the front matter | **Front matter** button |
 | Compare with another open file | **Compare…** button |
@@ -192,8 +192,10 @@ like — can write and revise the slides while marp-order shows the result.
    in the deck's folder.
 2. Ask for what you want in terms of the file: *"In `talk.md`, shorten slide 7 to three
    bullets and add speaker notes to every slide that has none."*
-3. When the agent writes the file, marp-order shows **The file was changed outside
-   marp-order**. Press `Ctrl+R` to reload and see the new slides.
+3. When the agent writes the file, marp-order reloads it by itself within a couple of
+   seconds and shows the new slides. This needs **Auto-reload** (top right) to be on,
+   which it is by default, and no unsaved changes in the tab; otherwise the warning
+   **The file was changed outside marp-order** appears and `Ctrl+R` reloads.
 4. Rearrange, fix details in the editor and save as usual.
 
 Things that make this work well:
@@ -225,7 +227,9 @@ Remember that the agent sends the content of your slides to its provider.
   copies of each file are kept.
 - **Atomic write.** The content goes to a temporary file that is then renamed, so a crash
   halfway through does not leave you with half a deck.
-- **External edits.** If the file changes in your editor while marp-order is open, saving
+- **External edits.** If the file changes in your editor while marp-order is open and
+  the tab has no unsaved changes, it is reloaded by itself (the **Auto-reload** box, top
+  right, turns this off). With unsaved changes nothing is reloaded, and saving
   is blocked until you choose between reloading and overwriting. The same happens when
   the file was saved from another marp-order window.
 - **Thumbnail cache.** The thumbnails of the last 40 decks are kept in

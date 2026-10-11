@@ -92,7 +92,7 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Descartar alterações | botão **Discard** |
 | Alternar entre português e inglês | seletor **EN / PT**, no canto superior direito |
 | Salvar no arquivo | `Ctrl+S` |
-| Recarregar o arquivo do disco | `Ctrl+R` |
+| Recarregar o arquivo do disco | `Ctrl+R`, ou sozinho com **Auto-reload** ligado |
 | Abrir outro arquivo | `Ctrl+O` ou **+ Open** |
 | Editar o front-matter | botão **Front matter** |
 | Comparar com outro arquivo aberto | botão **Compare…** |
@@ -196,8 +196,10 @@ resultado.
    pasta do deck.
 2. Peça o que quer em termos do arquivo: *"Em `aula.md`, reduza a lâmina 7 a três tópicos
    e acrescente notas do apresentador em toda lâmina que não tiver."*
-3. Quando o agente grava o arquivo, o marp-order mostra **O arquivo foi alterado fora do
-   marp-order**. Aperte `Ctrl+R` para recarregar e ver as lâminas novas.
+3. Quando o agente grava o arquivo, o marp-order o recarrega sozinho em um ou dois
+   segundos e mostra as lâminas novas. Isso exige a opção **Auto-reload** (canto superior
+   direito) ligada, que é o padrão, e nenhuma alteração não salva na aba; caso contrário
+   aparece o aviso **O arquivo foi alterado fora do marp-order** e o `Ctrl+R` recarrega.
 4. Reorganize, acerte detalhes no editor e salve como de costume.
 
 O que faz isso funcionar bem:
@@ -229,7 +231,9 @@ Lembre que o agente envia o conteúdo das suas lâminas ao fornecedor dele.
   cópias mais recentes de cada arquivo.
 - **Gravação atômica.** O conteúdo vai para um arquivo temporário e é renomeado, de modo
   que uma queda no meio não deixa o deck pela metade.
-- **Edição externa.** Se o arquivo mudar no seu editor enquanto o marp-order está aberto,
+- **Edição externa.** Se o arquivo mudar no seu editor enquanto o marp-order está aberto e
+  a aba não tiver alterações não salvas, ele é recarregado sozinho (a caixa **Auto-reload**,
+  no canto superior direito, desliga isso). Com alterações não salvas nada é recarregado, e
   o salvamento é bloqueado até você escolher entre recarregar ou sobrescrever. O mesmo
   acontece quando o arquivo foi salvo por outra janela do marp-order.
 - **Cache de miniaturas.** As miniaturas dos últimos 40 decks ficam em
