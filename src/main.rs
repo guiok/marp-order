@@ -1064,8 +1064,15 @@ fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
             }
             if route == "/api/preview" {
                 let index = body["index"].as_u64().unwrap_or(0) as usize;
+                // the presentation asks for the page of every entry at once
+                let pages: Vec<usize> = match body["all"].as_bool() {
+                    Some(true) => (0..entries.len())
+                        .map(|at| if at == 0 { 1 } else { doc.deck.count(&entries[..at]) + 1 })
+                        .collect(),
+                    _ => Vec::new(),
+                };
                 return match app.preview(id, &entries, index, body["head"].as_str()) {
-                    Ok(page) => respond_json(request, 200, json!({ "page": page })),
+                    Ok(page) => respond_json(request, 200, json!({ "page": page, "pages": pages })),
                     Err(message) => respond_error(request, 503, &message),
                 };
             }
@@ -1422,6 +1429,10 @@ mod tests {
         assert_eq!(post("/api/save", save).0, 409);
         let bad = json!({ "doc": doc, "generation": 2, "slides": [{ "id": 9 }] });
         assert_eq!(post("/api/save", bad).0, 400);
+
+        // without marp-cli there is no preview, but the request itself is understood
+        let preview = json!({ "doc": doc, "generation": 2, "slides": [{ "id": 0 }, { "id": 1 }], "index": 1, "all": true });
+        assert_eq!(post("/api/preview", preview).0, 503);
 
         let listing = post("/api/browse", json!({ "dir": sandbox.0 })).1;
         let names: Vec<&str> = listing["entries"]

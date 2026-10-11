@@ -95,6 +95,7 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Recarregar o arquivo do disco | `Ctrl+R`, ou sozinho com **Auto-reload** ligado |
 | Abrir outro arquivo | `Ctrl+O` ou **+ Open** |
 | Editar o front-matter | botão **Front matter** |
+| Apresentar com narração | botão **▶ Present** |
 | Comparar com outro arquivo aberto | botão **Compare…** |
 
 Cada cartão mostra a posição nova e, se a lâmina mudou de lugar, a posição que ela tem no
@@ -126,6 +127,29 @@ O botão **Front matter** abre o mesmo editor no bloco YAML do início do arquiv
 `paginate`, `headingDivider`…), com a primeira lâmina como pré-visualização. Ele vale
 para o arquivo todo, então é gravado no disco assim que você salva ali, e só fica
 disponível quando a aba não tem alterações pendentes.
+
+### Apresentar com narração
+
+**▶ Present** mostra as lâminas em tela cheia, a partir da selecionada, exatamente como
+estão na aba (alterações pendentes incluídas). `→`, `Espaço` ou `PageDown` avançam, `←` ou
+`PageUp` voltam, `Home` e `End` vão para as pontas, e `Esc` fecha.
+
+Durante a apresentação, as **notas do apresentador** de cada lâmina — os comentários HTML
+que não são diretivas do Marp — aparecem abaixo dela e são lidas em voz alta pelo
+conversor de texto em fala do navegador:
+
+- A lista de vozes põe primeiro as do idioma do deck, tirado de `lang:` no front-matter
+  (`lang: pt-BR`), ou do idioma da interface quando o deck não tem. Você pode escolher
+  qualquer outra voz; a escolha é lembrada.
+- **Advance when the notes end** transforma o deck em uma apresentação que roda sozinha:
+  cada lâmina avança quando as notas terminam, ou depois de quatro segundos se não tiver
+  notas.
+- **Speed** muda a velocidade da leitura, e desmarcar **Read the notes aloud** a silencia.
+
+As vozes vêm do seu navegador e do sistema operacional, não do marp-order, então os
+idiomas disponíveis e a qualidade dependem deles. Alguns navegadores usam vozes online, que
+enviam as notas ao fabricante do navegador. Precisa do marp-cli, como a pré-visualização do
+editor.
 
 ### Vários arquivos
 

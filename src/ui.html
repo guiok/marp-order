@@ -119,6 +119,23 @@
   #edview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
   #edview iframe.loading { opacity: 0; }
   .help { color: var(--muted); padding: 0 16px 20px; font-size: 12px; }
+  #show { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; border: 0; border-radius: 0;
+          background: #000; color: #e5e7eb; }
+  #show[open] { display: flex; flex-direction: column; }
+  #shview { position: relative; flex: 1; min-height: 0; }
+  #shview iframe { position: absolute; inset: 0; margin: auto; height: 100%; max-width: 100%;
+                   aspect-ratio: 16 / 9; border: 0; background: #fff; }
+  #shview iframe.loading { opacity: 0; }
+  #shnotes { max-height: 4.6em; overflow: auto; padding: 6px 16px; font-size: 14px; color: #cbd5e1;
+             white-space: pre-wrap; }
+  #shnotes:empty { display: none; }
+  #shbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 16px; font-size: 13px;
+           background: #111827; }
+  #shbar button, #shbar select { font: inherit; color: #e5e7eb; background: #1f2937; border: 1px solid #374151;
+                                 border-radius: 6px; padding: 4px 10px; }
+  #shbar select { max-width: 26ch; }
+  #shbar label { display: flex; align-items: center; gap: 4px; }
+  #shbar .grow { flex: 1; color: #9ca3af; }
   #opener { width: min(900px, 96vw); }
   #opener .panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 50vh; padding-bottom: 12px; }
   #opener h2 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); }
@@ -174,6 +191,7 @@
   <button id="redo" data-tt="Redo (Ctrl+Y)" data-t="↷ Redo"></button>
   <button id="dup" data-tt="Duplicate selected (Ctrl+D)" data-t="Duplicate"></button>
   <button id="del" data-tt="Remove selected (Delete)" data-t="Remove"></button>
+  <button id="present" data-tt="Present the slides and read the speaker notes aloud" data-t="▶ Present"></button>
   <button id="fm" data-tt="Edit the front matter (theme and global settings)" data-t="Front matter"></button>
   <button id="compare" data-tt="Compare with another open file and merge slides" data-t="Compare…"></button>
   <button id="discard" data-tt="Go back to what is saved in the file" data-t="Discard"></button>
@@ -248,6 +266,21 @@
     <button id="dfclose" class="primary" data-t="Done"></button>
   </div>
   <div id="dfrows"></div>
+</dialog>
+<dialog id="show">
+  <div id="shview"></div>
+  <div id="shnotes"></div>
+  <div id="shbar">
+    <button id="shprev" data-tt="Previous slide (←)">◀</button>
+    <strong id="shpos"></strong>
+    <button id="shnext" data-tt="Next slide (→ or Space)">▶</button>
+    <label><input type="checkbox" id="shspeak" checked> <span data-t="Read the notes aloud"></span></label>
+    <select id="shvoice" data-tt="Voice and language of the narration" aria-label="Voice"></select>
+    <label><span data-t="Speed"></span> <input id="shrate" type="range" min="0.6" max="1.6" step="0.1" value="1"></label>
+    <label><input type="checkbox" id="shauto"> <span data-t="Advance when the notes end"></span></label>
+    <span id="shstatus" class="grow"></span>
+    <button id="shclose" data-t="Close"></button>
+  </div>
 </dialog>
 <div id="toast"></div>
 
@@ -431,6 +464,37 @@ function makeRemap(oldSlides, newSlides, saved, base) {
   };
 }
 
+/**
+ * Speaker notes as sentences to be read aloud: Markdown marks are dropped and the text is
+ * cut at sentence ends, because browsers stop speaking very long passages.
+ */
+function speechChunks(notes) {
+  const plain = notes
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/^\s*(#{1,6}|[-*+]|\d+[.)])\s+/gm, '')
+    .replace(/[*_`~]/g, '');
+  return plain.split(/(?<=[.!?…:;])\s+|\n+/).map((part) => part.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
+/** Language of the deck (`lang:` in the front matter), or '' when it has none. */
+function deckLang(head) {
+  const found = head.match(/^lang:\s*["']?([A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)/m);
+  return found ? found[1] : '';
+}
+
+/** Voices ordered for the list: the ones that speak `want` (e.g. `pt-BR`) first, exact region before others. */
+function sortVoices(voices, want) {
+  const base = want.toLowerCase().split('-')[0];
+  const rank = (voice) => {
+    const lang = voice.lang.toLowerCase().replace('_', '-');
+    if (lang === want.toLowerCase()) return 0;
+    return lang.split('-')[0] === base ? 1 : 2;
+  };
+  return voices.slice().sort((a, b) => rank(a) - rank(b) || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
+}
+
 /** Every word of the query appears in the text, ignoring case. */
 function matchesQuery(text, query) {
   const hay = text.toLowerCase();
@@ -464,6 +528,18 @@ const PT = {
   '+ Open': '+ Abrir',
   'Open a file (Ctrl+O)': 'Abrir um arquivo (Ctrl+O)',
   'Language': 'Idioma',
+  '▶ Present': '▶ Apresentar',
+  'Present the slides and read the speaker notes aloud': 'Apresentar as lâminas e ler em voz alta as notas do apresentador',
+  'Previous slide (←)': 'Lâmina anterior (←)',
+  'Next slide (→ or Space)': 'Próxima lâmina (→ ou Espaço)',
+  'Read the notes aloud': 'Ler as notas em voz alta',
+  'Voice and language of the narration': 'Voz e idioma da narração',
+  'Speed': 'Velocidade',
+  'Advance when the notes end': 'Avançar quando as notas terminarem',
+  'This browser has no speech voices.': 'Este navegador não tem vozes de fala.',
+  'No speaker notes on this slide.': 'Esta lâmina não tem notas do apresentador.',
+  'Slide being presented': 'Lâmina em apresentação',
+  'preparing the slides…': 'preparando as lâminas…',
   'Auto-reload': 'Recarregar sozinho',
   'Reload the file by itself when it changes on disk and nothing is unsaved here': 'Recarregar o arquivo sozinho quando ele mudar no disco e não houver nada pendente aqui',
   'The file changed on disk and was reloaded.': 'O arquivo mudou no disco e foi recarregado.',
@@ -1034,15 +1110,19 @@ async function refreshPreview() {
 
 /** Loads the new version underneath and only then swaps, so the slide does not flicker. */
 function showPreview(src) {
+  swapFrame(edview, src, t('Slide preview'));
+}
+
+function swapFrame(view, src, title) {
   const next = document.createElement('iframe');
   next.className = 'loading';
-  next.title = t('Slide preview');
+  next.title = title;
   next.onload = () => {
-    for (const old of [...edview.children]) if (old !== next) old.remove();
+    for (const old of [...view.children]) if (old !== next) old.remove();
     next.classList.remove('loading');
   };
   next.src = src;
-  edview.append(next);
+  view.append(next);
 }
 
 function closeEditor() {
@@ -1237,7 +1317,7 @@ async function poll() {
 
 /** The file changed on disk; with nothing pending here it can simply be read again. */
 const wantsAutoReload = (tab) => $('#auto').checked && !tab.autoFailed && !isDirty() && !editing &&
-  !differ.open && !dragging;
+  !differ.open && !show.open && !dragging;
 
 async function autoReload(tab) {
   let res, body;
@@ -1364,6 +1444,7 @@ function renderTabs() {
   $('#empty').hidden = tabs.length > 0;
   $('#compare').disabled = !S || tabs.length < 2;
   $('#fm').disabled = !S;
+  $('#present').disabled = !S;
 }
 
 /** Switches tabs, keeping the unsaved order, edits and history in the previous one. */
@@ -1627,6 +1708,131 @@ $('#dfall').onclick = takeAll;
 $('#dfundo').onclick = () => { stepHistory(undo, redo); renderDiff(); };
 $('#dfclose').onclick = () => differ.close();
 
+// ---- presentation with narration ---------------------------------------------
+
+const show = $('#show');
+let showing = null;      // {at, pages, stamp, turn, timer}
+const synth = window.speechSynthesis;
+
+/** Fills the voice list, with the voices of the deck's language (or the interface's) first. */
+function listVoices() {
+  const select = $('#shvoice');
+  const want = (S && deckLang(S.head)) || (lang === 'pt' ? 'pt-BR' : 'en-US');
+  const voices = synth ? sortVoices(synth.getVoices(), want) : [];
+  let chosen = select.value;
+  try { chosen = chosen || localStorage.getItem('marp-order-voice') || ''; } catch {}
+  select.replaceChildren(...voices.map((voice) => {
+    const option = document.createElement('option');
+    option.value = voice.voiceURI;
+    option.textContent = `${voice.lang} · ${voice.name}`;
+    return option;
+  }));
+  // a remembered voice is kept only while it speaks the language of this deck
+  const base = want.toLowerCase().split('-')[0];
+  const kept = voices.find((voice) => voice.voiceURI === chosen && voice.lang.toLowerCase().startsWith(base));
+  if (kept) select.value = kept.voiceURI;
+  select.disabled = !voices.length;
+  $('#shspeak').disabled = !voices.length;
+  return voices;
+}
+
+/** Reads the notes of the current slide; when they end, moves on if asked to. */
+function narrate() {
+  if (!showing) return;
+  const turn = ++showing.turn;
+  clearTimeout(showing.timer);
+  if (synth) synth.cancel();
+  const notes = splitNotes(textOf(items[showing.at])).notes;
+  $('#shnotes').textContent = notes;
+  const advance = () => { if (showing && showing.turn === turn && $('#shauto').checked) stepShow(1); };
+  const voices = listVoices();
+  const speaking = $('#shspeak').checked && voices.length > 0;
+  $('#shstatus').textContent = !voices.length ? t('This browser has no speech voices.')
+    : notes ? '' : t('No speaker notes on this slide.');
+  const chunks = speechChunks(notes);
+  if (!speaking || !chunks.length) {
+    // nothing to read: stay long enough for the slide to be seen
+    showing.timer = setTimeout(advance, 4000);
+    return;
+  }
+  const voice = voices.find((v) => v.voiceURI === $('#shvoice').value) || voices[0];
+  chunks.forEach((chunk, n) => {
+    const say = new SpeechSynthesisUtterance(chunk);
+    say.voice = voice;
+    say.lang = voice.lang;
+    say.rate = Number($('#shrate').value);
+    if (n === chunks.length - 1) say.onend = advance;
+    synth.speak(say);
+  });
+}
+
+function stepShow(delta) {
+  if (!showing) return;
+  const at = Math.max(0, Math.min(items.length - 1, showing.at + delta));
+  if (at === showing.at && delta) return;
+  showing.at = at;
+  $('#shpos').textContent = `${at + 1} / ${items.length}`;
+  $('#shprev').disabled = at === 0;
+  $('#shnext').disabled = at === items.length - 1;
+  swapFrame($('#shview'), `/preview/slide.html?page=${showing.pages[at]}&t=${showing.stamp}`, t('Slide being presented'));
+  narrate();
+}
+
+/** Presents the slides as they are in the tab, pending changes included. */
+async function openShow() {
+  if (!S || !items.length || showing) return;
+  const start = Math.max(0, items.findIndex((it) => sel.has(it.k)));
+  $('#shview').replaceChildren();
+  $('#shnotes').textContent = '';
+  $('#shstatus').textContent = t('preparing the slides…');
+  $('#shpos').textContent = '';
+  show.showModal();
+  show.requestFullscreen?.().catch(() => {});
+  const session = showing = { at: start, pages: [], stamp: Date.now(), turn: 0, timer: null };
+  let res, body;
+  try {
+    res = await post('/api/preview', { doc: cur.doc, generation: S.generation, slides: items.map(entry), index: 0, all: true });
+    body = await res.json();
+  } catch {
+    body = { error: t('no response from marp-order') };
+  }
+  if (showing !== session) return;
+  if (!res || !res.ok) { closeShow(); return toast(body.error); }
+  session.pages = body.pages;
+  stepShow(0);
+}
+
+function closeShow() {
+  if (showing) clearTimeout(showing.timer);
+  showing = null;
+  if (synth) synth.cancel();
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (show.open) show.close();
+  $('#shview').replaceChildren();
+}
+
+if (synth) synth.addEventListener?.('voiceschanged', listVoices);
+$('#present').onclick = openShow;
+$('#shprev').onclick = () => stepShow(-1);
+$('#shnext').onclick = () => stepShow(1);
+$('#shclose').onclick = closeShow;
+$('#shspeak').onchange = narrate;
+$('#shrate').onchange = () => { $('#shrate').blur(); narrate(); };
+$('#shvoice').onchange = () => {
+  try { localStorage.setItem('marp-order-voice', $('#shvoice').value); } catch {}
+  // give the keys back to the slides
+  $('#shvoice').blur();
+  narrate();
+};
+show.addEventListener('cancel', (e) => { e.preventDefault(); closeShow(); });
+show.addEventListener('keydown', (e) => {
+  if (e.target.matches('select, input[type=range]')) return;
+  const moves = { ArrowRight: 1, PageDown: 1, ' ': 1, ArrowLeft: -1, PageUp: -1, Home: -items.length, End: items.length };
+  if (!(e.key in moves)) return;
+  e.preventDefault();
+  stepShow(moves[e.key]);
+});
+
 // ---- controls ----------------------------------------------------------------
 
 $('#save').onclick = () => save(false);
@@ -1682,7 +1888,7 @@ size.oninput = () => {
 };
 
 document.addEventListener('keydown', (e) => {
-  if (editor.open || openDlg.open || differ.open) return;
+  if (editor.open || openDlg.open || differ.open || show.open) return;
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   if (mod && key === 'o') { e.preventDefault(); return openDialog(); }

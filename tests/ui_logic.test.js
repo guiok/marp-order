@@ -123,3 +123,21 @@ test('translate fills placeholders and falls back to English', () => {
   assert.match(ui.translate('en', 'help', []), /^Drag to reorder/);
   for (const key of Object.keys(ui.EN)) assert.ok(ui.PT[key], key);
 });
+
+test('speechChunks turns notes into plain sentences', () => {
+  const notes = '## Opening\n- Greet the **room** and `smile`. Then [explain](http://x) the plan!\n\nAsk: any questions?';
+  assert.deepEqual(ui.speechChunks(notes), ['Opening', 'Greet the room and smile.', 'Then explain the plan!', 'Ask:', 'any questions?']);
+  assert.deepEqual(ui.speechChunks('  \n '), []);
+});
+
+test('deckLang reads the language of the front matter', () => {
+  assert.equal(ui.deckLang('---\nmarp: true\nlang: pt-BR\n---\n'), 'pt-BR');
+  assert.equal(ui.deckLang("---\nlang: 'en'\n---\n"), 'en');
+  assert.equal(ui.deckLang('---\nmarp: true\n---\n'), '');
+});
+
+test('sortVoices puts the voices of the wanted language first', () => {
+  const voices = ['en-US', 'pt-PT', 'pt-BR', 'es-ES', 'pt_BR'].map((lang, n) => ({ lang, name: `v${n}` }));
+  assert.deepEqual(ui.sortVoices(voices, 'pt-BR').map((v) => v.lang), ['pt_BR', 'pt-BR', 'pt-PT', 'en-US', 'es-ES']);
+  assert.deepEqual(ui.sortVoices(voices, 'en').map((v) => v.lang)[0], 'en-US');
+});

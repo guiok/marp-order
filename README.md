@@ -92,6 +92,7 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Reload the file from disk | `Ctrl+R`, or by itself with **Auto-reload** on |
 | Open another file | `Ctrl+O` or **+ Open** |
 | Edit the front matter | **Front matter** button |
+| Present with narration | **▶ Present** button |
 | Compare with another open file | **Compare…** button |
 
 Each card shows its new position and, if the slide has moved, the position it has in the
@@ -123,6 +124,26 @@ The **Front matter** button opens the same editor on the YAML block at the top o
 file (theme, `paginate`, `headingDivider`…), with the first slide as preview. It applies
 to the whole file, so it is written to disk as soon as you save it there, and it is only
 available when the tab has no pending changes.
+
+### Presenting with narration
+
+**▶ Present** shows the slides full screen, starting at the selected one, exactly as they
+are in the tab (pending changes included). `→`, `Space` or `PageDown` go forward, `←` or
+`PageUp` back, `Home` and `End` jump to the ends, and `Esc` closes.
+
+While presenting, the **speaker notes** of each slide — the HTML comments that are not
+Marp directives — are shown below it and read aloud by the browser's text-to-speech:
+
+- The voice list puts first the voices of the deck's language, taken from `lang:` in the
+  front matter (`lang: pt-BR`), or of the interface language when the deck has none. You
+  can pick any other voice; the choice is remembered.
+- **Advance when the notes end** turns the deck into a self-running presentation: each
+  slide moves on when its notes finish, or after four seconds if it has none.
+- **Speed** changes the reading rate, and unticking **Read the notes aloud** silences it.
+
+The voices come from your browser and operating system, not from marp-order, so which
+languages exist and how good they sound depends on them. Some browsers use online voices,
+which send the notes to the browser vendor. It needs marp-cli, like the editor preview.
 
 ### Several files
 
