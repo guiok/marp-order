@@ -114,6 +114,7 @@ como um único comentário no fim da lâmina.
 |---|---|
 | Aplicar a edição | `Ctrl+Enter` ou **Apply** |
 | Aplicar e gravar o arquivo | `Ctrl+S` |
+| Aplicar e editar a lâmina anterior / seguinte | `Alt+←` / `Alt+→`, ou os botões **◀ ▶** |
 | Cancelar | `Esc` ou **Cancel** |
 
 Aplicar não grava o arquivo: a edição fica pendente, como uma reordenação, e pode ser

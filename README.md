@@ -111,6 +111,7 @@ the end of the slide.
 |---|---|
 | Apply the edit | `Ctrl+Enter` or **Apply** |
 | Apply and write the file | `Ctrl+S` |
+| Apply and edit the previous / next slide | `Alt+←` / `Alt+→`, or the **◀ ▶** buttons |
 | Cancel | `Esc` or **Cancel** |
 
 Applying does not write the file: the edit stays pending, like a reordering, and can be
