@@ -39,17 +39,17 @@ sem alterar o conteúdo das lâminas.
 Sem o marp-cli o programa funciona do mesmo jeito, mostrando o texto de cada lâmina no
 lugar da miniatura; o editor abre, mas sem a pré-visualização.
 
-O marp-order é desenvolvido e usado no Linux. As versões para macOS e Windows são
-compiladas e passam pelos testes automáticos a cada alteração, mas não foram experimentadas
-à mão; abra uma issue se algo se comportar mal nelas.
+O marp-order é desenvolvido, usado e testado à mão somente no Linux. O código tem suporte
+a macOS e Windows, e os testes automáticos rodam neles, mas ninguém usou o programa nesses
+sistemas, por isso não há binários publicados para eles.
 
 ## Instalação
 
-**Binários prontos** para Linux, macOS e Windows acompanham cada
-[release](https://github.com/guiok/marp-order/releases): baixe o arquivo do seu sistema,
-descompacte e ponha o `marp-order` em alguma pasta do PATH.
+Um **binário pronto** para Linux (x86_64) acompanha cada
+[release](https://github.com/guiok/marp-order/releases): baixe o arquivo, descompacte e
+ponha o `marp-order` em alguma pasta do PATH.
 
-**Do código-fonte**, com o Rust instalado:
+**Do código-fonte**, com o Rust instalado (o único caminho em outros sistemas, sem teste):
 
 ```bash
 cargo install --git https://github.com/guiok/marp-order

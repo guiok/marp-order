@@ -36,17 +36,17 @@ without touching the content of the slides.
 Without marp-cli the program still works, showing the text of each slide instead of a
 thumbnail; the editor opens, but without the preview.
 
-marp-order is developed and used on Linux. The macOS and Windows builds are compiled and
-run through the automated tests on every change, but have not been tried by hand; please
-open an issue if something misbehaves there.
+marp-order is developed, used and tested by hand on Linux only. The code has support for
+macOS and Windows, and the automated tests run there, but nobody has used the program on
+those systems, so no binaries are published for them.
 
 ## Installation
 
-**Prebuilt binaries** for Linux, macOS and Windows are attached to each
-[release](https://github.com/guiok/marp-order/releases): download the archive for your
-system, unpack it and put `marp-order` somewhere on your PATH.
+A **prebuilt binary** for Linux (x86_64) is attached to each
+[release](https://github.com/guiok/marp-order/releases): download the archive, unpack it
+and put `marp-order` somewhere on your PATH.
 
-**From source**, with Rust installed:
+**From source**, with Rust installed (the only way on other systems, untested):
 
 ```bash
 cargo install --git https://github.com/guiok/marp-order
