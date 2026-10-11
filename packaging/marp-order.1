@@ -1,0 +1,55 @@
+.TH MARP-ORDER 1 "" "marp-order" "User Commands"
+.SH NAME
+marp-order \- visual slide sorter for Marp presentations
+.SH SYNOPSIS
+.B marp-order
+[\fIoptions\fR] [\fIpresentation.md\fR ...] [\fB\-\-\fR \fImarp-cli arguments\fR]
+.SH DESCRIPTION
+Opens a grid with the slides of a Marp presentation in the browser, where they can be
+rearranged by dragging, edited with a live preview, compared and merged with another
+deck, and presented with the speaker notes read aloud. Saving rewrites the Markdown file
+in the new order without reformatting the slides that were not edited.
+.PP
+Each file opens in its own tab. Without files, the ones that were open last time are
+opened again.
+.SH OPTIONS
+.TP
+\fB\-\-port\fR \fIn\fR
+Local server port (default: chosen by the system).
+.TP
+.B \-\-no\-open
+Do not open the browser automatically.
+.TP
+.B \-\-no\-thumbs
+Do not render thumbnails; show only the slide text.
+.TP
+.B \-\-no\-cache
+Do not keep thumbnails on disk between runs.
+.TP
+\fB\-\-marp\-cmd\fR \fIcmd\fR
+The marp-cli command (default: \fBmarp\fR, or \fBnpx @marp-team/marp-cli\fR).
+.TP
+.BR \-h ", " \-\-help
+Show the help.
+.TP
+.BR \-V ", " \-\-version
+Show the version.
+.PP
+Anything after \fB\-\-\fR is passed on to marp-cli, for example
+\fB\-\-theme\-set theme.css\fR.
+.SH ENVIRONMENT
+.TP
+.B MARP_ORDER_MARP_CMD
+The marp-cli command, as with \fB\-\-marp\-cmd\fR.
+.SH FILES
+.TP
+.I ~/.config/marp-order/
+Recently opened files and the last session.
+.TP
+.I ~/.cache/marp-order/
+Thumbnails kept between runs.
+.TP
+.I .marp-order-backups/
+Next to each deck: copies made before the first write of each run.
+.SH SEE ALSO
+https://github.com/guiok/marp-order

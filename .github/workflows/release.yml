@@ -1,6 +1,7 @@
 name: Release
 
-# Pushing a tag like v0.3.0 builds the Linux binary and attaches it to a GitHub release.
+# Pushing a tag like v0.3.0 builds the Linux binary and a .deb package and attaches them
+# to a GitHub release.
 # Only the system the program is actually used and tested on is published.
 on:
   push:
@@ -32,10 +33,14 @@ jobs:
           cp README.md README.pt-BR.md LICENSE "$name/"
           cp "target/${{ matrix.target }}/release/marp-order" "$name/"
           tar czf "$name.tar.gz" "$name"
+      - name: Debian package
+        run: sh packaging/build-deb.sh "target/${{ matrix.target }}/release/marp-order" "${GITHUB_REF_NAME#v}" .
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: marp-order-*.tar.gz
+          path: |
+            marp-order-*.tar.gz
+            marp-order_*.deb
 
   release:
     needs: build

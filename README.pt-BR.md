@@ -45,9 +45,15 @@ sistemas, por isso não há binários publicados para eles.
 
 ## Instalação
 
-Um **binário pronto** para Linux (x86_64) acompanha cada
-[release](https://github.com/guiok/marp-order/releases): baixe o arquivo, descompacte e
-ponha o `marp-order` em alguma pasta do PATH.
+Cada [release](https://github.com/guiok/marp-order/releases) traz dois arquivos para Linux
+(x86_64):
+
+- **Pacote `.deb`**, para Debian, Ubuntu e derivados. Baixe e rode
+  `sudo apt install ./marp-order_<versão>_amd64.deb`. Ele instala `/usr/bin/marp-order` e
+  uma página de manual, e `sudo apt remove marp-order` os remove. É um arquivo avulso, não
+  um repositório apt, então versões novas precisam ser baixadas de novo.
+- **Arquivo `.tar.gz`** só com o binário: descompacte e ponha o `marp-order` em alguma
+  pasta do PATH.
 
 **Do código-fonte**, com o Rust instalado (o único caminho em outros sistemas, sem teste):
 
