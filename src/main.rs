@@ -1363,8 +1363,9 @@ mod tests {
         assert!(app.doc(other).is_some());
     }
 
+    /// Path as the app writes it: on Windows `join("a/b")` would keep the `/`.
     fn doc_path(sandbox: &Sandbox, name: &str) -> String {
-        sandbox.0.join(name).display().to_string()
+        name.split('/').fold(sandbox.0.clone(), |path, part| path.join(part)).display().to_string()
     }
 
     #[test]
