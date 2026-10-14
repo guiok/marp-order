@@ -48,6 +48,8 @@
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .45; cursor: default; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button.danger:hover:not(:disabled) { border-color: var(--danger); }
   label.size { display: flex; align-items: center; gap: 6px; color: var(--muted); }
   .banner { margin: 8px 16px; padding: 8px 12px; border-radius: 6px;
             display: flex; align-items: center; gap: 12px; }
@@ -113,7 +115,7 @@
   .hl-code { color: var(--warn); }
   .hl-mk, .hl-hr { color: var(--danger); }
   .hl-lk { color: var(--accent); text-decoration: underline; }
-  .head #ednotes, .head .edside label, .head #edprev, .head #ednext { display: none; }
+  .head #ednotes, .head .edside label, .head #edprev, .head #ednext, .head #eddel { display: none; }
   #edview { position: relative; margin: 12px 0; align-self: start; aspect-ratio: 16 / 9;
             border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
   #edview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
@@ -236,6 +238,7 @@
   </div>
   <div class="bar">
     <span id="edhelp" class="grow"></span>
+    <button id="eddel" class="danger" data-tt="Remove this slide (Alt+Delete)" data-t="Remove slide"></button>
     <button id="edcancel" data-t="Cancel"></button>
     <button id="edapply" class="primary"></button>
   </div>
@@ -513,7 +516,8 @@ const EN = {
     'from disk · <kbd>Ctrl</kbd>+<kbd>O</kbd> opens another file · <span class="flag">⚠</span> marks a slide whose ' +
     'effect depends on its position (hover to see why).',
   'help.slide': '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> applies · <kbd>Ctrl</kbd>+<kbd>S</kbd> applies and saves · ' +
-    '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> applies and goes to the previous or next slide · <kbd>Esc</kbd> cancels',
+    '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> applies and goes to the previous or next slide · ' +
+    '<kbd>Alt</kbd>+<kbd>Delete</kbd> removes the slide · <kbd>Esc</kbd> cancels',
   'help.head': 'Theme and global settings, between two <kbd>---</kbd> lines · <kbd>Ctrl</kbd>+<kbd>S</kbd> saves to the file · <kbd>Esc</kbd> cancels',
 };
 
@@ -526,7 +530,8 @@ const PT = {
     'do disco · <kbd>Ctrl</kbd>+<kbd>O</kbd> abre outro arquivo · <span class="flag">⚠</span> indica lâmina cujo ' +
     'efeito depende da posição (passe o mouse para ver).',
   'help.slide': '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> aplica · <kbd>Ctrl</kbd>+<kbd>S</kbd> aplica e salva · ' +
-    '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> aplica e vai para a lâmina anterior ou seguinte · <kbd>Esc</kbd> cancela',
+    '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> aplica e vai para a lâmina anterior ou seguinte · ' +
+    '<kbd>Alt</kbd>+<kbd>Delete</kbd> remove a lâmina · <kbd>Esc</kbd> cancela',
   'help.head': 'Tema e configurações globais, entre duas linhas <kbd>---</kbd> · <kbd>Ctrl</kbd>+<kbd>S</kbd> grava no arquivo · <kbd>Esc</kbd> cancela',
   '+ Open': '+ Abrir',
   'Open a file (Ctrl+O)': 'Abrir um arquivo (Ctrl+O)',
@@ -624,6 +629,10 @@ const PT = {
     'O arquivo foi alterado fora do marp-order desde que foi aberto.\n\nOK: sobrescrever (uma cópia do arquivo atual é guardada).\nCancelar: não salvar.',
   'Front matter saved.': 'Front-matter salvo.',
   'Discard the changes?': 'Descartar as alterações?',
+  'Remove slide': 'Remover lâmina',
+  'Remove this slide (Alt+Delete)': 'Remover esta lâmina (Alt+Delete)',
+  'Remove this slide and discard the changes made to it?': 'Remover esta lâmina e descartar as alterações feitas nela?',
+  'Slide removed. After closing the editor, Ctrl+Z brings it back.': 'Lâmina removida. Depois de fechar o editor, Ctrl+Z a traz de volta.',
   '{0} slide(s) will be removed from the file. Continue?': '{0} lâmina(s) serão removidas do arquivo. Continuar?',
   'Could not reach marp-order.': 'Não foi possível falar com o marp-order.',
   'The file was saved from another marp-order window since it was loaded here.\n\nOK: overwrite it with what you see here (a copy of the current file is kept).\nCancel: do not save.':
@@ -660,6 +669,13 @@ const PT = {
     'O front-matter (tema e configurações globais) é diferente. Ele não é mesclado: use o botão Front-matter para editá-lo.',
   'That file is no longer open.': 'Esse arquivo não está mais aberto.',
 };
+
+/** The list without the item `k`, and the item to show next: the one that took its place or, at the end, the new last one. */
+function withoutItem(list, k) {
+  const at = list.findIndex((it) => it.k === k);
+  const rest = list.filter((it) => it.k !== k);
+  return { rest, next: at < 0 ? null : rest[Math.min(at, rest.length - 1)] ?? null };
+}
 
 /** Text of `key` in language `lang`, with `{0}`, `{1}`… replaced by the arguments. */
 function translate(lang, key, args) {
@@ -1176,6 +1192,22 @@ function applyEdit() {
   return true;
 }
 
+/** Removes the slide being edited, like Delete in the grid, and opens the next one in the editor. */
+function removeEdited() {
+  if (!editing || editing.mode !== 'slide') return;
+  const changed = edtext.value !== editing.body || ednotes.value !== editing.notes;
+  if (changed && !confirm(t('Remove this slide and discard the changes made to it?'))) return;
+  const { rest, next } = withoutItem(items, editing.k);
+  commit(rest);
+  toast(t('Slide removed. After closing the editor, Ctrl+Z brings it back.'));
+  if (!next) { sel = new Set(); anchor = null; renderSel(); return closeEditor(); }
+  sel = new Set([next.k]);
+  anchor = next.k;
+  renderSel();
+  cards.get(next.k).scrollIntoView({ block: 'nearest' });
+  openEditor(next);
+}
+
 function cancelEdit() {
   const changed = editedText() !== editing.initial.trim();
   if (!changed || confirm(t('Discard the changes?'))) closeEditor();
@@ -1199,6 +1231,10 @@ editor.addEventListener('keydown', (e) => {
     e.preventDefault();
     return stepEditor(e.key === 'ArrowLeft' ? -1 : 1);
   }
+  if (e.altKey && e.key === 'Delete') {
+    e.preventDefault();
+    return removeEdited();
+  }
   if (!(e.ctrlKey || e.metaKey)) return;
   const key = e.key.toLowerCase();
   if (key !== 'enter' && key !== 's') return;
@@ -1209,6 +1245,7 @@ editor.addEventListener('keydown', (e) => {
 });
 $('#edapply').onclick = applyEdit;
 $('#edcancel').onclick = cancelEdit;
+$('#eddel').onclick = removeEdited;
 $('#fm').onclick = openHead;
 $('#edprev').onclick = () => stepEditor(-1);
 $('#ednext').onclick = () => stepEditor(1);

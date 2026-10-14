@@ -95,6 +95,14 @@ test('makeRemap carries the undo history over a save that renumbers slides', () 
   assert.deepEqual(split({ k: 4, id: 0, text: '# gone' }), { k: 4, id: 0, text: '# gone', fresh: true });
 });
 
+test('withoutItem removes a slide and picks the one to edit next', () => {
+  const list = [{ k: 1 }, { k: 2 }, { k: 3 }];
+  assert.deepEqual(ui.withoutItem(list, 2), { rest: [{ k: 1 }, { k: 3 }], next: { k: 3 } });
+  assert.deepEqual(ui.withoutItem(list, 3), { rest: [{ k: 1 }, { k: 2 }], next: { k: 2 } });
+  assert.deepEqual(ui.withoutItem([{ k: 1 }], 1), { rest: [], next: null });
+  assert.deepEqual(ui.withoutItem(list, 9), { rest: list, next: null });
+});
+
 test('matchesQuery needs every word, in any case', () => {
   assert.ok(ui.matchesQuery('Quarterly Roadmap\n- Q1: pilot', 'roadmap PILOT'));
   assert.ok(!ui.matchesQuery('Quarterly Roadmap', 'roadmap budget'));
