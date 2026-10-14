@@ -136,6 +136,60 @@ impl App {
         Ok(id)
     }
 
+    /// Writes the tab as it is (order and edits) to another file and makes the tab show
+    /// that file; the original is left as it was on disk. Errors carry the HTTP status and
+    /// either a message or a code the interface understands (`exists`, `open`, `is_dir`).
+    fn save_as(&mut self, id: u64, entries: &[Entry], target: &Path, overwrite: bool) -> Result<(), (u16, String)> {
+        if target.is_dir() {
+            return Err((400, "is_dir".into()));
+        }
+        let mut target = target.to_path_buf();
+        if target.extension().is_none() {
+            target.set_extension("md");
+        }
+        if !is_markdown(&target) {
+            return Err((400, "the file name must end in .md or .markdown".into()));
+        }
+        let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
+            return Err((400, "invalid file name".into()));
+        };
+        let folder = real_path(if folder.as_os_str().is_empty() { Path::new(".") } else { folder })
+            .map_err(|e| (400, format!("could not use the folder {}: {e}", folder.display())))?;
+        let mut target = folder.join(name);
+        let exists = target.exists();
+        if exists {
+            // an existing file may be a link: write where it really is
+            target = real_path(&target).map_err(|e| (400, e.to_string()))?;
+        }
+        if self.docs.iter().any(|doc| doc.id != id && doc.path == target) {
+            return Err((409, "open".into()));
+        }
+        let doc = self.doc(id).ok_or((404, "file not open".to_string()))?;
+        if doc.path == target {
+            return Err((400, "that is this same file; use Save".into()));
+        }
+        if exists && !overwrite {
+            return Err((409, "exists".into()));
+        }
+        // relative image paths keep pointing to the same files from the new folder
+        let from = doc.path.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let content = links::rebase(&doc.deck.compose(entries), &from, &folder);
+        let kept = if exists {
+            Some(backup(&target).map_err(|e| (500, format!("could not create the backup: {e}")))?)
+        } else {
+            None
+        };
+        write_atomic(&target, content.as_bytes()).map_err(|e| (500, format!("could not write the file: {e}")))?;
+        doc.path = target.clone();
+        doc.last_backup = kept;
+        doc.save_seq += 1;
+        doc.adopt(Deck::parse(content), entries);
+        self.remember_recent(&target);
+        self.remember_session();
+        self.rethumb(id);
+        Ok(())
+    }
+
     fn close(&mut self, id: u64) {
         if let Some(at) = self.docs.iter().position(|doc| doc.id == id) {
             let doc = self.docs.remove(at);
@@ -454,6 +508,7 @@ impl Doc {
         let mut state = self.status_json();
         state["file"] = json!(file_name(&self.path));
         state["path"] = json!(self.path.display().to_string());
+        state["dir"] = json!(self.path.parent().map(|dir| dir.display().to_string()).unwrap_or_default());
         state["slides"] = json!(slides);
         state["head"] = json!(self.deck.head);
         state
@@ -1035,6 +1090,26 @@ fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
             app.close(id);
             respond_json(request, 200, app.docs_json());
         }
+        "/api/save_as" => {
+            let doc = app.doc(id).unwrap();
+            let entries = parse_entries(&body["slides"], doc.deck.slides.len());
+            let (Some(entries), Some(generation), Some(path)) =
+                (entries, body["generation"].as_u64(), body["path"].as_str().filter(|p| !p.trim().is_empty()))
+            else {
+                return respond_error(request, 400, "invalid request");
+            };
+            if generation != doc.generation {
+                return respond_error(request, 409, "the file changed in another window; reload it (Ctrl+R)");
+            }
+            let overwrite = body["overwrite"].as_bool().unwrap_or(false);
+            match app.save_as(id, &entries, Path::new(path.trim()), overwrite) {
+                Ok(()) => {
+                    let state = app.doc(id).unwrap().state_json();
+                    respond_json(request, 200, state);
+                }
+                Err((status, message)) => respond_error(request, status, &message),
+            }
+        }
         "/api/head" => {
             let doc = app.doc(id).unwrap();
             let Some(head) = body["head"].as_str() else {
@@ -1245,6 +1320,51 @@ mod tests {
             .map(|slide| slide["title"].as_str().unwrap())
             .collect();
         assert_eq!(titles, ["One", "Two", "Two and a half", "Three"]);
+    }
+
+    #[test]
+    fn save_as_writes_another_file_and_the_tab_follows_it() {
+        let sandbox = Sandbox::new();
+        let source = sandbox.file("talks/deck.md", "---\nmarp: true\n---\n\n# One\n\n![x](img/a.png)\n\n---\n\n# Two\n");
+        sandbox.file("talks/img/a.png", "png");
+        sandbox.file("copies/old.md", "old content");
+        fs::create_dir_all(sandbox.0.join("empty")).unwrap();
+        let mut app = sandbox.app();
+        let id = app.open(&source).unwrap();
+        let other = app.open(&sandbox.file("talks/other.md", DECK)).unwrap();
+        let order = vec![(1, None), (0, None)];
+
+        // a new file in another folder: image paths follow, the original is untouched
+        let target = sandbox.0.join("copies/new");
+        assert!(app.save_as(id, &order, &target, false).is_ok());
+        let written = fs::read_to_string(sandbox.0.join("copies/new.md")).unwrap();
+        assert_eq!(written, "---\nmarp: true\n---\n\n# Two\n\n---\n\n# One\n\n![x](../talks/img/a.png)\n");
+        assert!(fs::read_to_string(&source).unwrap().starts_with("---\nmarp: true\n---\n\n# One"));
+        let doc = app.doc(id).unwrap();
+        assert_eq!(doc.path, sandbox.0.join("copies/new.md"));
+        assert_eq!((doc.generation, doc.disk_order.clone()), (2, vec![0, 1]));
+        assert!(!doc.external_change());
+        assert!(app.read_list("session.json").contains(&doc_path(&sandbox, "copies/new.md")));
+
+        // an existing file is replaced only when asked, and kept as a backup
+        let old = sandbox.0.join("copies/old.md");
+        let keep = vec![(0, None), (1, None)];
+        assert_eq!(app.save_as(id, &keep, &old, false).unwrap_err(), (409, "exists".to_string()));
+        assert!(app.save_as(id, &keep, &old, true).is_ok());
+        assert!(backups(&sandbox.0.join("copies")).iter().any(|b| fs::read_to_string(b).unwrap() == "old content"));
+
+        // what cannot be a target
+        let refuse = |app: &mut App, path: &str| app.save_as(id, &keep, &sandbox.0.join(path), true).unwrap_err().1;
+        assert_eq!(refuse(&mut app, "talks/other.md"), "open");
+        assert_eq!(refuse(&mut app, "empty"), "is_dir");
+        assert!(refuse(&mut app, "copies/notes.txt").contains(".md"));
+        assert!(refuse(&mut app, "copies/old.md").contains("same file"));
+        assert!(refuse(&mut app, "missing/deck.md").contains("folder"));
+        assert!(app.doc(other).is_some());
+    }
+
+    fn doc_path(sandbox: &Sandbox, name: &str) -> String {
+        sandbox.0.join(name).display().to_string()
     }
 
     #[test]

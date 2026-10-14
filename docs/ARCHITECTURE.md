@@ -196,6 +196,7 @@ change that. marp-order does not use the websocket, and it carries no deck conte
 | `POST /api/browse` | `{dir}` — folders and Markdown files, for the open dialog |
 | `POST /api/save` | `{doc, generation, save_seq, slides: [{id, text?}], force}` — writes order and edits |
 | `POST /api/preview` | `{doc, generation, slides, index, head?}` — converts the draft; returns the page |
+| `POST /api/save_as` | `{doc, generation, slides, path, overwrite}` — writes the tab to another file, which the tab then shows |
 | `POST /api/draft` | `{doc, generation, slides}` — requests thumbnails of unsaved slides |
 | `POST /api/head` | `{doc, head, force}` — writes a new front matter |
 | `POST /api/import` | `{from, to, texts}` — adjusts relative paths of copied slides |

@@ -148,6 +148,8 @@
   #oppath { flex: 1; font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px;
             background: var(--bg); color: var(--text); }
   #operror { color: var(--danger); margin: 6px 0 0; }
+  #opener.saving .panes { grid-template-columns: minmax(0, 1fr); }
+  #opener.saving .panes > section:first-child { display: none; }
   #differ { width: min(1100px, 96vw); }
   #differ select { font: inherit; max-width: 30ch; }
   #dfrows { display: grid; gap: 8px; max-height: 74vh; overflow: auto; padding: 10px 14px;
@@ -195,6 +197,7 @@
   <button id="fm" data-tt="Edit the front matter (theme and global settings)" data-t="Front matter"></button>
   <button id="compare" data-tt="Compare with another open file and merge slides" data-t="Compare…"></button>
   <button id="discard" data-tt="Go back to what is saved in the file" data-t="Discard"></button>
+  <button id="saveas" data-tt="Save the tab, as it is, to another file (Ctrl+Shift+S)" data-t="Save as…"></button>
   <button id="save" class="primary" data-tt="Write the changes to the file (Ctrl+S)"></button>
 </header>
 
@@ -238,7 +241,7 @@
   </div>
 </dialog>
 <dialog id="opener">
-  <div class="bar"><strong data-t="Open a presentation"></strong><span class="grow"></span><button id="opclose" data-t="Close"></button></div>
+  <div class="bar"><strong id="optitle" data-t="Open a presentation"></strong><span class="grow"></span><button id="opclose" data-t="Close"></button></div>
   <div class="panes">
     <section>
       <h2 data-t="Recent"></h2>
@@ -248,7 +251,7 @@
       <h2 data-t="Browse"></h2>
       <form id="opform">
         <input id="oppath" spellcheck="false" aria-label="Folder or file path">
-        <button data-t="Go"></button>
+        <button id="opgo" data-t="Go"></button>
       </form>
       <ul id="oplist"></ul>
       <p id="operror"></p>
@@ -528,6 +531,12 @@ const PT = {
   '+ Open': '+ Abrir',
   'Open a file (Ctrl+O)': 'Abrir um arquivo (Ctrl+O)',
   'Language': 'Idioma',
+  'Save as…': 'Salvar como…',
+  'Save the tab, as it is, to another file (Ctrl+Shift+S)': 'Salvar a aba, como está, em outro arquivo (Ctrl+Shift+S)',
+  'Save as': 'Salvar como',
+  '{0} already exists. Replace it? (a copy of it is kept)': '{0} já existe. Substituir? (uma cópia dele é guardada)',
+  'That file is open in another tab. Close it there first.': 'Esse arquivo está aberto em outra aba. Feche-o lá primeiro.',
+  'Saved as {0}. This tab now shows the new file; the original was not changed.': 'Salvo como {0}. Esta aba agora mostra o arquivo novo; o original não foi alterado.',
   '▶ Present': '▶ Apresentar',
   'Present the slides and read the speaker notes aloud': 'Apresentar as lâminas e ler em voz alta as notas do apresentador',
   'Previous slide (←)': 'Lâmina anterior (←)',
@@ -708,15 +717,19 @@ const titleOf = (item) => (item.text == null ? S.slides[item.id].title : slideTi
 const selected = () => items.filter((it) => sel.has(it.k));
 const cardList = () => [...grid.querySelectorAll('.card')];
 
+/** The tab follows the file the state belongs to (it changes with Save as). */
+function nameTab(tab, state) {
+  Object.assign(tab, { file: state.file, path: state.path, dir: state.dir });
+  document.title = state.file + ' — marp-order';
+}
+
 function adopt(state) {
   S = state;
   items = S.disk_order.map((id) => ({ k: nextKey++, id }));
   sel = new Set(); anchor = null; undo = []; redo = [];
   cards.forEach((el) => el.remove());
   cards.clear();
-  cur.file = S.file;
-  cur.path = S.path;
-  document.title = S.file + ' — marp-order';
+  nameTab(cur, S);
   document.body.classList.remove('nodoc');
   render();
   showStatus(S);
@@ -1240,10 +1253,12 @@ async function save(force) {
 }
 
 /** Adopts the rewritten file without losing the undo history or the selection. */
-async function rebase(tab, saved) {
-  const res = await fetch(`/api/state?doc=${tab.doc}`);
-  if (!res.ok) return dropTab(tab);
-  const state = await res.json();
+async function rebase(tab, saved, state) {
+  if (!state) {
+    const res = await fetch(`/api/state?doc=${tab.doc}`);
+    if (!res.ok) return dropTab(tab);
+    state = await res.json();
+  }
   if (cur !== tab) { tab.S = null; return; }
   const remap = makeRemap(S.slides, state.slides, saved, state.disk_order[0] ?? 0);
   const whole = saved.length === state.slides.length;
@@ -1252,10 +1267,42 @@ async function rebase(tab, saved) {
   // what was just written is, by definition, what is on disk
   items = whole ? saved.map((it, id) => ({ k: it.k, id })) : state.disk_order.map((id) => ({ k: nextKey++, id }));
   S = state;
+  nameTab(tab, S);
   cards.forEach((el) => el.remove());
   cards.clear();
   render();
   showStatus(S);
+}
+
+/**
+ * Writes the tab as it is to another file, which the tab then shows. Moving to another
+ * folder rewrites relative image paths, so the undo history, which still has the old
+ * paths, starts over in that case.
+ */
+async function saveAs(path, overwrite) {
+  const tab = cur, saved = items, folder = cur.dir;
+  let res, body;
+  try {
+    res = await post('/api/save_as', { doc: tab.doc, generation: S.generation, slides: saved.map(entry), path, overwrite: !!overwrite });
+    body = await res.json();
+  } catch {
+    return void ($('#operror').textContent = t('Could not reach marp-order.'));
+  }
+  if (body.error === 'is_dir') return browse(path);
+  if (body.error === 'exists') {
+    const name = path.split(/[\\/]/).pop();
+    if (confirm(t('{0} already exists. Replace it? (a copy of it is kept)', name))) return saveAs(path, true);
+    return;
+  }
+  if (!res.ok) {
+    $('#operror').textContent = body.error === 'open' ? t('That file is open in another tab. Close it there first.') : body.error;
+    return;
+  }
+  if (openDlg.open) openDlg.close();
+  if (cur !== tab) { tab.S = null; nameTab(tab, body); return renderTabs(); }
+  if (body.dir === folder) await rebase(tab, saved, body);
+  else adopt(body);
+  toast(t('Saved as {0}. This tab now shows the new file; the original was not changed.', body.file));
 }
 
 async function reload() {
@@ -1444,6 +1491,7 @@ function renderTabs() {
   $('#empty').hidden = tabs.length > 0;
   $('#compare').disabled = !S || tabs.length < 2;
   $('#fm').disabled = !S;
+  $('#saveas').disabled = !S;
   $('#present').disabled = !S;
 }
 
@@ -1503,7 +1551,42 @@ function fileButton(label, hint, action) {
   return li;
 }
 
+let saveName = '';      // file name kept while browsing folders in the Save as dialog
+
+/** Selects the file name in the path box, scrolled into view, ready to be typed over. */
+function focusSaveName() {
+  const box = $('#oppath'), value = box.value;
+  const start = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\')) + 1;
+  const dot = value.lastIndexOf('.');
+  box.focus();
+  box.setSelectionRange(start, dot > start ? dot : value.length);
+  box.scrollLeft = box.scrollWidth;
+}
+
+/** The same dialog opens files (`open`) or picks where to save the tab (`save`). */
+function dialogMode(mode) {
+  const saving = mode === 'save';
+  openDlg.classList.toggle('saving', saving);
+  $('#optitle').dataset.t = saving ? 'Save as' : 'Open a presentation';
+  $('#opgo').dataset.t = saving ? 'Save' : 'Go';
+  for (const el of [$('#optitle'), $('#opgo')]) el.innerHTML = t(el.dataset.t);
+}
+
+function openSaveAs() {
+  if (!S) return;
+  dialogMode('save');
+  saveName = cur.file.replace(/(\.[^.]*)?$/, (ext) => '-copy' + (ext || '.md'));
+  // the suggestion is there at once; the folder listing arrives a moment later
+  const sep = cur.path.includes('/') ? '/' : '\\';
+  $('#oppath').value = cur.dir.replace(/[\\/]?$/, sep) + saveName;
+  $('#operror').textContent = '';
+  openDlg.showModal();
+  focusSaveName();
+  browse(cur.dir);
+}
+
 async function openDialog() {
+  dialogMode('open');
   $('#operror').textContent = '';
   openDlg.showModal();
   const info = await (await fetch('/api/docs')).json();
@@ -1518,15 +1601,26 @@ async function openDialog() {
 }
 
 async function browse(dir) {
+  const typed = $('#oppath').value;
   const res = await post('/api/browse', { dir });
   const body = await res.json();
   if (!res.ok) return void ($('#operror').textContent = body.error);
   if (body.file) return openFile(body.file);
   $('#operror').textContent = '';
-  $('#oppath').value = body.dir;
+  const saving = openDlg.classList.contains('saving');
+  const sep = body.dir.includes('/') || !body.dir.includes('\\') ? '/' : '\\';
+  // what the user typed while the listing was on its way is not overwritten
+  if ($('#oppath').value === typed) {
+    $('#oppath').value = saving ? body.dir.replace(/[\\/]?$/, sep) + saveName : body.dir;
+    if (saving) focusSaveName();
+  }
+  // choosing an existing file while saving only fills in its name; replacing it is asked later
+  const pick = (entry) => (saving
+    ? () => { saveName = entry.name; $('#oppath').value = entry.path; focusSaveName(); }
+    : () => openFile(entry.path));
   const list = body.entries.map((entry) => (entry.dir
     ? fileButton('📁 ' + entry.name, '', () => browse(entry.path))
-    : fileButton(entry.name, '', () => openFile(entry.path))));
+    : fileButton(entry.name, '', pick(entry))));
   if (body.parent) list.unshift(fileButton('📁 ..', '', () => browse(body.parent)));
   $('#oplist').replaceChildren(...list);
 }
@@ -1544,7 +1638,13 @@ async function openFile(path) {
   if (tab !== cur) activate(tab); else renderTabs();
 }
 
-$('#opform').onsubmit = (e) => { e.preventDefault(); browse($('#oppath').value.trim()); };
+$('#opform').onsubmit = (e) => {
+  e.preventDefault();
+  const path = $('#oppath').value.trim();
+  if (!path) return;
+  if (openDlg.classList.contains('saving')) saveAs(path, false); else browse(path);
+};
+$('#saveas').onclick = openSaveAs;
 $('#opclose').onclick = () => openDlg.close();
 $('#open').onclick = $('#openempty').onclick = openDialog;
 
@@ -1896,7 +1996,8 @@ document.addEventListener('keydown', (e) => {
   if (mod && key === 'f') { e.preventDefault(); find.focus(); return find.select(); }
   if (e.target === find) return;   // in the search box, keys are text
   let handled = true;
-  if (mod && key === 's') save(false);
+  if (mod && key === 's' && e.shiftKey) openSaveAs();
+  else if (mod && key === 's') save(false);
   else if (mod && key === 'z' && !e.shiftKey) stepHistory(undo, redo);
   else if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) stepHistory(redo, undo);
   else if (mod && key === 'd') duplicateSelection();

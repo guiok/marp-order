@@ -1,6 +1,6 @@
 [package]
 name = "marp-order"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 description = "Visual slide sorter for Marp decks: reorder, edit, compare and merge slides in the browser"
 license = "MIT"

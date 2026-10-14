@@ -98,6 +98,7 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Descartar alterações | botão **Discard** |
 | Alternar entre português e inglês | seletor **EN / PT**, no canto superior direito |
 | Salvar no arquivo | `Ctrl+S` |
+| Salvar em outro arquivo | **Save as…** ou `Ctrl+Shift+S` |
 | Recarregar o arquivo do disco | `Ctrl+R`, ou sozinho com **Auto-reload** ligado |
 | Abrir outro arquivo | `Ctrl+O` ou **+ Open** |
 | Editar o front-matter | botão **Front matter** |
@@ -259,6 +260,10 @@ Lembre que o agente envia o conteúdo das suas lâminas ao fornecedor dele.
 - **Backup.** Antes da primeira gravação de cada execução, o arquivo é copiado para
   `.marp-order-backups/apresentacao.md.<data>.bak`, ao lado dele. Ficam guardadas as dez
   cópias mais recentes de cada arquivo.
+- **Salvar como.** **Save as…** grava a aba, com as alterações pendentes, em outro arquivo, e
+  a aba passa a mostrá-lo; o original fica como estava no disco. Salvar em outra pasta
+  reescreve os caminhos relativos de imagens para continuarem achando os mesmos arquivos.
+  Substituir um arquivo existente pede confirmação e guarda um backup dele.
 - **Gravação atômica.** O conteúdo vai para um arquivo temporário e é renomeado, de modo
   que uma queda no meio não deixa o deck pela metade.
 - **Edição externa.** Se o arquivo mudar no seu editor enquanto o marp-order está aberto e

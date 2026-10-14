@@ -107,6 +107,10 @@ test('every interface text has a Portuguese translation', () => {
   // t('...') calls in the script and data-t / data-tt / data-tp attributes in the HTML
   for (const m of html.matchAll(/\bt\('((?:[^'\\]|\\.)*)'/g)) keys.add(decode(m[1]));
   for (const m of html.matchAll(/data-t[tp]?="([^"]*)"/g)) keys.add(m[1]);
+  // keys swapped at run time, as in `el.dataset.t = cond ? 'A' : 'B'`
+  for (const m of html.matchAll(/dataset\.t = ([^;]*);/g)) {
+    for (const q of m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)) keys.add(decode(q[1]));
+  }
   for (const key of ['{0} different', '{0} only here', '{0} only in the other']) keys.add(key);
   assert.ok(keys.size > 90, `only ${keys.size} keys found`);
   const missing = [...keys].filter((key) => !(key in ui.PT));

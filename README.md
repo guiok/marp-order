@@ -95,6 +95,7 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Discard changes | **Discard** button |
 | Switch between English and Portuguese | **EN / PT** selector, top right |
 | Save to the file | `Ctrl+S` |
+| Save to another file | **Save as…** or `Ctrl+Shift+S` |
 | Reload the file from disk | `Ctrl+R`, or by itself with **Auto-reload** on |
 | Open another file | `Ctrl+O` or **+ Open** |
 | Edit the front matter | **Front matter** button |
@@ -252,6 +253,10 @@ Remember that the agent sends the content of your slides to its provider.
 - **Backup.** Before the first write of each run, the file is copied to
   `.marp-order-backups/presentation.md.<date>.bak` next to it. The ten most recent
   copies of each file are kept.
+- **Save as.** **Save as…** writes the tab, with its pending changes, to another file and
+  the tab switches to it; the original stays as it was on disk. Saving into another
+  folder rewrites relative image paths so they still find the same files. Replacing an
+  existing file asks first and keeps a backup of it.
 - **Atomic write.** The content goes to a temporary file that is then renamed, so a crash
   halfway through does not leave you with half a deck.
 - **External edits.** If the file changes in your editor while marp-order is open and
