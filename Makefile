@@ -1,8 +1,11 @@
 # Without DECK, marp-order reopens the files of the last session.
 DECK ?=
-BIN  := target/release/marp-order
-SRC  := Cargo.toml $(wildcard src/*)
 UNAME := $(shell uname -s)
+# One build folder per system: the project may sit on a shared drive used from Linux and
+# macOS, and a binary built on one cannot run on the other.
+TARGET_DIR := target/$(UNAME)-$(shell uname -m)
+BIN  := $(TARGET_DIR)/release/marp-order
+SRC  := Cargo.toml $(wildcard src/*)
 
 .PHONY: run build test install deps help
 
@@ -12,10 +15,10 @@ run: $(BIN) ## run it, reopening the last session (or DECK=presentation.md)
 build: $(BIN) ## build the release binary
 
 $(BIN): $(SRC)
-	cargo build --release
+	cargo build --release --target-dir $(TARGET_DIR)
 
 test: ## run the parser, server and interface tests
-	cargo test
+	cargo test --target-dir $(TARGET_DIR)
 	node --test tests/ui_logic.test.js
 
 install: $(BIN) ## copy the binary to ~/.local/bin

@@ -307,7 +307,7 @@ marks the card with ⚠ so you can check.
 
 ```bash
 make test     # parser, server and interface tests
-make build    # release binary in target/release/
+make build    # release binary in target/<system>-<cpu>/release/, e.g. target/Linux-x86_64/
 make                          # run it, reopening the last session
 make run DECK=presentation.md
 ```

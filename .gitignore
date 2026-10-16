@@ -4,3 +4,6 @@
 .marp-order-backups/
 .*.marp-order.tmp
 .*.marp-order.draft.md
+# written by macOS on shared drives
+._*
+.DS_Store

@@ -315,7 +315,7 @@ com ⚠ para você conferir.
 
 ```bash
 make test     # testes do parser, do servidor e da interface
-make build    # binário de release em target/release/
+make build    # binário de release em target/<sistema>-<cpu>/release/, ex.: target/Linux-x86_64/
 make                          # executa, reabrindo a última sessão
 make run DECK=apresentacao.md
 ```
