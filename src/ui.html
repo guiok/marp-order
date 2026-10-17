@@ -105,17 +105,24 @@
   /* the visible text is the coloured <pre> underneath; the text area on top is transparent */
   #edhl { position: absolute; inset: 0; overflow-y: scroll; pointer-events: none;
           background: var(--bg); color: var(--text); }
-  #edtext { position: relative; flex: 1; min-height: 50vh; resize: vertical; overflow-y: scroll;
+  #edtext { position: relative; flex: 1; min-height: 60vh; resize: vertical; overflow-y: scroll;
             background: transparent; color: transparent; caret-color: var(--text); }
   #edtext::selection { background: var(--accent-soft); }
-  #ednotes { min-height: 9vh; resize: vertical; background: var(--bg); color: var(--text); }
-  .edside label { font-size: 12px; color: var(--muted); }
+  #ednotes { flex: 1; min-height: 60vh; resize: vertical; background: var(--bg); color: var(--text); }
+  /* the slide text and its notes share the space, one tab at a time */
+  .edtabs { position: relative; z-index: 1; display: flex; gap: 4px; margin-bottom: -9px; }
+  .edtabs button { border-bottom: 0; border-radius: 6px 6px 0 0; padding: 4px 12px; color: var(--muted); }
+  .edtabs button.on { background: var(--bg); color: var(--text); font-weight: 600;
+                      border-bottom: 1px solid var(--bg); }
+  #edtabnotes.has::after { content: ' •'; color: var(--accent); }
+  #editor:not(.head) :is(#edtext, #edhl, #ednotes) { border-top-left-radius: 0; }
+  #editor.notes .edwrap, #editor:not(.notes) #ednotes { display: none; }
   .hl-hd { color: var(--accent); }
   .hl-cm { color: var(--muted); font-style: italic; }
   .hl-code { color: var(--warn); }
   .hl-mk, .hl-hr { color: var(--danger); }
   .hl-lk { color: var(--accent); text-decoration: underline; }
-  .head #ednotes, .head .edside label, .head #edprev, .head #ednext, .head #eddel { display: none; }
+  .head #ednotes, .head .edtabs, .head #edprev, .head #ednext, .head #eddel { display: none; }
   #edview { position: relative; margin: 12px 0; align-self: start; aspect-ratio: 16 / 9;
             border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
   #edview iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
@@ -227,12 +234,15 @@
   </div>
   <div class="panes">
     <div class="edside">
+      <div class="edtabs" role="tablist">
+        <button id="edtabslide" role="tab" data-t="Slide" data-tt="Switch between the slide and its notes (Alt+N)"></button>
+        <button id="edtabnotes" role="tab" data-t="Speaker notes" data-tt="Switch between the slide and its notes (Alt+N)"></button>
+      </div>
       <div class="edwrap">
         <pre id="edhl" aria-hidden="true"></pre>
         <textarea id="edtext" spellcheck="false" aria-label="Slide Markdown"></textarea>
       </div>
-      <label for="ednotes" data-t="Speaker notes"></label>
-      <textarea id="ednotes" spellcheck="false"></textarea>
+      <textarea id="ednotes" spellcheck="false" aria-label="Speaker notes"></textarea>
     </div>
     <div id="edview"></div>
   </div>
@@ -517,6 +527,7 @@ const EN = {
     'effect depends on its position (hover to see why).',
   'help.slide': '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> applies · <kbd>Ctrl</kbd>+<kbd>S</kbd> applies and saves · ' +
     '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> applies and goes to the previous or next slide · ' +
+    '<kbd>Alt</kbd>+<kbd>N</kbd> switches between the slide and its notes · ' +
     '<kbd>Alt</kbd>+<kbd>Delete</kbd> removes the slide · <kbd>Esc</kbd> cancels',
   'help.head': 'Theme and global settings, between two <kbd>---</kbd> lines · <kbd>Ctrl</kbd>+<kbd>S</kbd> saves to the file · <kbd>Esc</kbd> cancels',
 };
@@ -531,6 +542,7 @@ const PT = {
     'efeito depende da posição (passe o mouse para ver).',
   'help.slide': '<kbd>Ctrl</kbd>+<kbd>Enter</kbd> aplica · <kbd>Ctrl</kbd>+<kbd>S</kbd> aplica e salva · ' +
     '<kbd>Alt</kbd>+<kbd>←</kbd><kbd>→</kbd> aplica e vai para a lâmina anterior ou seguinte · ' +
+    '<kbd>Alt</kbd>+<kbd>N</kbd> alterna entre a lâmina e as notas dela · ' +
     '<kbd>Alt</kbd>+<kbd>Delete</kbd> remove a lâmina · <kbd>Esc</kbd> cancela',
   'help.head': 'Tema e configurações globais, entre duas linhas <kbd>---</kbd> · <kbd>Ctrl</kbd>+<kbd>S</kbd> grava no arquivo · <kbd>Esc</kbd> cancela',
   '+ Open': '+ Abrir',
@@ -582,7 +594,9 @@ const PT = {
   'marp-order has stopped. Start it again to continue.': 'O marp-order foi encerrado. Inicie-o novamente para continuar.',
   'No file open.': 'Nenhum arquivo aberto.',
   'Open a presentation…': 'Abrir uma apresentação…',
+  'Slide': 'Lâmina',
   'Speaker notes': 'Notas do apresentador',
+  'Switch between the slide and its notes (Alt+N)': 'Alternar entre a lâmina e as notas dela (Alt+N)',
   'Cancel': 'Cancelar',
   'Apply': 'Aplicar',
   'Open a presentation': 'Abrir uma apresentação',
@@ -1046,13 +1060,36 @@ function showEditor(title, help) {
   // on screen until the new one has loaded
   if (!editor.open) {
     edview.replaceChildren();
+    editor.classList.remove('notes');
     editor.showModal();
   }
   paintEditor();
-  edtext.focus();
-  edtext.setSelectionRange(0, 0);
-  edtext.scrollTop = 0;
+  for (const area of [edtext, ednotes]) {
+    area.setSelectionRange(0, 0);
+    area.scrollTop = 0;
+  }
+  // a fresh editor opens on the slide; moving between slides keeps the tab in use
+  showTab(editing.mode === 'slide' && editor.classList.contains('notes'));
   refreshPreview();
+}
+
+/** Shows the slide text or its speaker notes, which share the space of the left pane. */
+function showTab(notes) {
+  const [from, to] = notes ? [edtext, ednotes] : [ednotes, edtext];
+  // a size set by dragging the corner carries over to the other tab
+  if (editor.classList.contains('notes') !== notes) to.style.height = from.style.height;
+  editor.classList.toggle('notes', notes);
+  for (const [tab, on] of [[$('#edtabslide'), !notes], [$('#edtabnotes'), notes]]) {
+    tab.classList.toggle('on', on);
+    tab.setAttribute('aria-selected', on);
+  }
+  markNotes();
+  to.focus();
+}
+
+/** A dot on the notes tab tells, from the slide tab, that the slide has notes. */
+function markNotes() {
+  $('#edtabnotes').classList.toggle('has', ednotes.value.trim() !== '');
 }
 
 function openEditor(item) {
@@ -1222,6 +1259,7 @@ const edited = () => {
 };
 edtext.addEventListener('input', edited);
 ednotes.addEventListener('input', edited);
+ednotes.addEventListener('input', markNotes);
 edtext.addEventListener('scroll', () => { $('#edhl').scrollTop = edtext.scrollTop; });
 new ResizeObserver(paintEditor).observe(edtext);
 editor.addEventListener('cancel', (e) => { e.preventDefault(); cancelEdit(); });
@@ -1234,6 +1272,11 @@ editor.addEventListener('keydown', (e) => {
   if (e.altKey && e.key === 'Delete') {
     e.preventDefault();
     return removeEdited();
+  }
+  // by key position: on a Mac, Option+N gives a dead key instead of "n"
+  if (e.altKey && e.code === 'KeyN' && editing?.mode === 'slide') {
+    e.preventDefault();
+    return showTab(!editor.classList.contains('notes'));
   }
   if (!(e.ctrlKey || e.metaKey)) return;
   const key = e.key.toLowerCase();
@@ -1249,6 +1292,8 @@ $('#eddel').onclick = removeEdited;
 $('#fm').onclick = openHead;
 $('#edprev').onclick = () => stepEditor(-1);
 $('#ednext').onclick = () => stepEditor(1);
+$('#edtabslide').onclick = () => showTab(false);
+$('#edtabnotes').onclick = () => showTab(true);
 
 // ---- server ------------------------------------------------------------------
 

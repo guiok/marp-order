@@ -115,14 +115,16 @@ sintaxe, e à direita a lâmina renderizada pelo Marp com o tema, as imagens e a
 do deck. A pré-visualização é refeita a cada alteração (algumas centenas de milissegundos).
 
 As notas do apresentador (comentários HTML que não são diretivas do Marp) ficam em uma
-caixa própria abaixo do texto. Se você alterar o texto ou as notas, elas são regravadas
-como um único comentário no fim da lâmina.
+aba própria, ao lado do texto da lâmina, e assim cada um ocupa a altura toda do painel.
+Um ponto na aba **Speaker notes** indica que a lâmina tem notas. Se você alterar o
+texto ou as notas, elas são regravadas como um único comentário no fim da lâmina.
 
 | Ação | Como |
 |---|---|
 | Aplicar a edição | `Ctrl+Enter` ou **Apply** |
 | Aplicar e gravar o arquivo | `Ctrl+S` |
 | Aplicar e editar a lâmina anterior / seguinte | `Alt+←` / `Alt+→`, ou os botões **◀ ▶** |
+| Alternar entre a lâmina e as notas dela | `Alt+N`, ou as abas **Slide** / **Speaker notes** |
 | Remover a lâmina e editar a seguinte | `Alt+Delete` ou **Remove slide** |
 | Cancelar | `Esc` ou **Cancel** |
 

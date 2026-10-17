@@ -111,15 +111,17 @@ Double-clicking a card opens the editor: the slide's Markdown on the left, with 
 colouring, and on the right the slide rendered by Marp with the deck's theme, images and
 directives. The preview is redone on every change (a few hundred milliseconds).
 
-Speaker notes (HTML comments that are not Marp directives) get their own box below the
-text. If you change the text or the notes, the notes are written back as one comment at
-the end of the slide.
+Speaker notes (HTML comments that are not Marp directives) get their own tab, next to the
+slide text, so each one has the full height of the pane. A dot on the **Speaker notes** tab
+shows that the slide has notes. If you change the text or the notes, the notes are written
+back as one comment at the end of the slide.
 
 | Action | How |
 |---|---|
 | Apply the edit | `Ctrl+Enter` or **Apply** |
 | Apply and write the file | `Ctrl+S` |
 | Apply and edit the previous / next slide | `Alt+←` / `Alt+→`, or the **◀ ▶** buttons |
+| Switch between the slide and its notes | `Alt+N`, or the **Slide** / **Speaker notes** tabs |
 | Remove the slide and edit the next one | `Alt+Delete` or **Remove slide** |
 | Cancel | `Esc` or **Cancel** |
 
