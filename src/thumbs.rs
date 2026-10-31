@@ -24,6 +24,7 @@ pub enum Job {
     },
 }
 
+#[derive(Clone)]
 pub struct Config {
     /// The marp-cli command, already split into program + arguments.
     pub cmd: Vec<String>,
@@ -211,26 +212,8 @@ fn draft(
 fn render(config: &Config, deck: &Path, work: &Path) -> Result<Vec<PathBuf>, String> {
     let _ = fs::remove_dir_all(work);
     fs::create_dir_all(work).map_err(|e| e.to_string())?;
-
-    let output = Command::new(&config.cmd[0])
-        .args(&config.cmd[1..])
-        .args(["--no-stdin", "--allow-local-files"])
-        .args(["--images", "jpeg", "--image-scale", "0.5", "--jpeg-quality", "80"])
-        .arg("-o")
-        .arg(work.join("s.jpeg"))
-        .args(&config.extra)
-        .arg(deck)
-        .current_dir(deck.parent().unwrap_or(Path::new(".")))
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| format!("could not run `{}`: {e}", config.cmd.join(" ")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
-        let tail = lines[lines.len().saturating_sub(3)..].join(" | ");
-        return Err(format!("marp-cli failed: {tail}"));
-    }
+    let args = ["--images", "jpeg", "--image-scale", "0.5", "--jpeg-quality", "80"];
+    marp(config, deck, &args, &work.join("s.jpeg"))?;
 
     let mut images: Vec<PathBuf> = fs::read_dir(work)
         .map_err(|e| e.to_string())?
@@ -239,4 +222,28 @@ fn render(config: &Config, deck: &Path, work: &Path) -> Result<Vec<PathBuf>, Str
         .collect();
     images.sort();
     Ok(images)
+}
+
+/// Converts `deck` with marp-cli, from the deck's folder so relative paths resolve.
+pub fn marp(config: &Config, deck: &Path, args: &[&str], output: &Path) -> Result<(), String> {
+    let result = Command::new(&config.cmd[0])
+        .args(&config.cmd[1..])
+        .args(["--no-stdin", "--allow-local-files"])
+        .args(args)
+        .arg("-o")
+        .arg(output)
+        .args(&config.extra)
+        .arg(deck)
+        .current_dir(deck.parent().unwrap_or(Path::new(".")))
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("could not run `{}`: {e}", config.cmd.join(" ")))?;
+
+    if !result.status.success() {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
+        let tail = lines[lines.len().saturating_sub(3)..].join(" | ");
+        return Err(format!("marp-cli failed: {tail}"));
+    }
+    Ok(())
 }

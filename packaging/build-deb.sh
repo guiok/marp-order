@@ -49,11 +49,12 @@ Priority: optional
 Homepage: https://github.com/guiok/marp-order
 Description: visual slide sorter for Marp presentations
  Reorder the slides of a Marp deck by dragging thumbnails around a grid in
- the browser, edit them with a live preview, compare and merge decks, and
- present with the speaker notes read aloud. The Markdown file is rewritten
- without reformatting the slides that were not edited.
+ the browser, edit them with a live preview, compare and merge decks,
+ present with the speaker notes read aloud, and export to PDF, PowerPoint,
+ HTML or images. The Markdown file is rewritten without reformatting the
+ slides that were not edited.
  .
- Thumbnails, the live preview and the presentation need marp-cli
+ Thumbnails, the live preview, the presentation and the export need marp-cli
  (npm install -g @marp-team/marp-cli) and Chrome or Chromium.
 CONTROL
 

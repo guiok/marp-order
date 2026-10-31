@@ -1,9 +1,11 @@
 mod cache;
 mod deck;
+mod export;
 mod links;
 mod preview;
 mod thumbs;
 
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -19,6 +21,7 @@ use tiny_http::{Header, Method, Request, Response, Server};
 
 use cache::Cache;
 use deck::{Deck, Entry};
+use export::Format;
 use preview::Preview;
 use thumbs::Job;
 
@@ -93,6 +96,9 @@ pub struct App {
     preview: Option<Preview>,
     /// Thumbnails kept between runs; `None` with `--no-cache` or without thumbnails.
     pub cache: Option<Cache>,
+    /// marp-cli for exporting; `None` when there is none.
+    marp: Option<thumbs::Config>,
+    export: Arc<Mutex<export::Status>>,
 }
 
 impl App {
@@ -150,12 +156,8 @@ impl App {
         if !is_markdown(&target) {
             return Err((400, "the file name must end in .md or .markdown".into()));
         }
-        let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
-            return Err((400, "invalid file name".into()));
-        };
-        let folder = real_path(if folder.as_os_str().is_empty() { Path::new(".") } else { folder })
-            .map_err(|e| (400, format!("could not use the folder {}: {e}", folder.display())))?;
-        let mut target = folder.join(name);
+        let mut target = in_real_folder(&target)?;
+        let folder = target.parent().unwrap_or(Path::new(".")).to_path_buf();
         let exists = target.exists();
         if exists {
             // an existing file may be a link: write where it really is
@@ -187,6 +189,50 @@ impl App {
         self.remember_recent(&target);
         self.remember_session();
         self.rethumb(id);
+        Ok(())
+    }
+
+    /// Starts converting the tab as it is (order and edits) to another format; the file of
+    /// the tab is not touched. Errors carry the HTTP status and either a message or a code
+    /// the interface understands (`exists`, `is_dir`, `busy`).
+    fn export(
+        &mut self,
+        id: u64,
+        entries: &[Entry],
+        format: Format,
+        notes: bool,
+        target: &Path,
+        overwrite: bool,
+    ) -> Result<(), (u16, String)> {
+        let config = self.marp.clone().ok_or((503, "export unavailable: marp-cli not found".to_string()))?;
+        if self.export.lock().unwrap().running() {
+            return Err((409, "busy".into()));
+        }
+        if target.is_dir() {
+            return Err((400, "is_dir".into()));
+        }
+        let mut target = target.to_path_buf();
+        match target.extension() {
+            None => {
+                target.set_extension(format.extension());
+            }
+            Some(ext) if ext.eq_ignore_ascii_case(format.extension()) => {}
+            Some(_) => return Err((400, format!("the file name must end in .{}", format.extension()))),
+        }
+        let target = in_real_folder(&target)?;
+        if format.first_file(&target).exists() && !overwrite {
+            return Err((409, "exists".into()));
+        }
+        let doc = self.doc(id).ok_or((404, "file not open".to_string()))?;
+        let job = export::Job {
+            deck: doc.path.clone(),
+            markdown: doc.deck.compose(entries),
+            format,
+            notes,
+            target,
+            slides: doc.deck.count(entries),
+        };
+        export::start(&self.export, config, job);
         Ok(())
     }
 
@@ -581,6 +627,16 @@ fn config_dir() -> Option<PathBuf> {
     Some(base.join("marp-order"))
 }
 
+/// `target` in the real path of its folder, which must exist.
+fn in_real_folder(target: &Path) -> Result<PathBuf, (u16, String)> {
+    let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
+        return Err((400, "invalid file name".into()));
+    };
+    let folder = real_path(if folder.as_os_str().is_empty() { Path::new(".") } else { folder })
+        .map_err(|e| (400, format!("could not use the folder {}: {e}", folder.display())))?;
+    Ok(folder.join(name))
+}
+
 fn load(path: &Path) -> Result<Deck, String> {
     let bytes = fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
     let text = String::from_utf8(bytes)
@@ -786,6 +842,11 @@ fn run() -> Result<(), String> {
         render: None,
         preview,
         cache,
+        marp: marp_cmd.as_ref().map(|cmd| thumbs::Config {
+            cmd: cmd.clone(),
+            extra: args.marp_extra.clone(),
+        }),
+        export: Arc::default(),
     }));
     if let Some(cmd) = marp_cmd.filter(|_| args.thumbs) {
         let config = thumbs::Config {
@@ -821,15 +882,15 @@ fn run() -> Result<(), String> {
 
     println!("Open {url}  (Ctrl+C to stop)");
     if args.open {
-        open_browser(&url);
+        open_with_system(&url);
     }
 
     serve(&server, &app, port);
     Ok(())
 }
 
-/// Opens the address in the system's default browser.
-fn open_browser(url: &str) {
+/// Opens an address in the default browser, or a file or folder in its default program.
+fn open_with_system(target: impl AsRef<OsStr>) {
     let mut command = if cfg!(target_os = "macos") {
         Command::new("open")
     } else if cfg!(windows) {
@@ -841,7 +902,7 @@ fn open_browser(url: &str) {
         Command::new("xdg-open")
     };
     let _ = command
-        .arg(url)
+        .arg(target)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -974,6 +1035,10 @@ fn handle(mut request: Request, app: &Mutex<App>, port: u16) {
             let _ = request.respond(Response::from_string(UI).with_header(header));
         }
         "/api/docs" => respond_json(request, 200, app.docs_json()),
+        "/api/export" => {
+            let status = app.export.lock().unwrap().json();
+            respond_json(request, 200, status);
+        }
         "/api/state" | "/api/status" => match doc_id.and_then(|id| app.doc(id)) {
             Some(doc) if route == "/api/state" => respond_json(request, 200, doc.state_json()),
             Some(doc) => respond_json(request, 200, doc.status_json()),
@@ -1078,6 +1143,17 @@ fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
                 .collect();
             return respond_json(request, 200, json!({ "texts": texts }));
         }
+        "/api/export/open" => {
+            // only what the last export wrote, never a path from the request
+            let done = app.export.lock().unwrap().done().map(Path::to_path_buf);
+            return match done {
+                Some(path) => {
+                    open_with_system(&path);
+                    respond_json(request, 200, json!({}))
+                }
+                None => respond_error(request, 404, "nothing exported"),
+            };
+        }
         _ => {}
     }
 
@@ -1106,6 +1182,29 @@ fn handle_post(request: Request, app: &mut App, route: &str, body: &Value) {
                 Ok(()) => {
                     let state = app.doc(id).unwrap().state_json();
                     respond_json(request, 200, state);
+                }
+                Err((status, message)) => respond_error(request, status, &message),
+            }
+        }
+        "/api/export" => {
+            let doc = app.doc(id).unwrap();
+            let entries = parse_entries(&body["slides"], doc.deck.slides.len());
+            let format = body["format"].as_str().and_then(Format::parse);
+            let path = body["path"].as_str().filter(|p| !p.trim().is_empty());
+            let (Some(entries), Some(generation), Some(format), Some(path)) =
+                (entries, body["generation"].as_u64(), format, path)
+            else {
+                return respond_error(request, 400, "invalid request");
+            };
+            if generation != doc.generation {
+                return respond_error(request, 409, "the file changed in another window; reload it (Ctrl+R)");
+            }
+            let notes = body["notes"].as_bool().unwrap_or(false);
+            let overwrite = body["overwrite"].as_bool().unwrap_or(false);
+            match app.export(id, &entries, format, notes, Path::new(path.trim()), overwrite) {
+                Ok(()) => {
+                    let status = app.export.lock().unwrap().json();
+                    respond_json(request, 202, status);
                 }
                 Err((status, message)) => respond_error(request, status, &message),
             }
@@ -1233,6 +1332,8 @@ mod tests {
                 render: None,
                 preview: None,
                 cache: None,
+                marp: None,
+                export: Arc::default(),
             }
         }
     }
@@ -1361,6 +1462,74 @@ mod tests {
         assert!(refuse(&mut app, "copies/old.md").contains("same file"));
         assert!(refuse(&mut app, "missing/deck.md").contains("folder"));
         assert!(app.doc(other).is_some());
+    }
+
+    /// Status of the export once it is no longer running.
+    #[cfg(unix)]
+    fn export_result(app: &App) -> Value {
+        for _ in 0..500 {
+            if !app.export.lock().unwrap().running() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        app.export.lock().unwrap().json()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn export_converts_the_tab_as_it_is_and_leaves_the_file_alone() {
+        let sandbox = Sandbox::new();
+        let source = sandbox.file("talks/deck.md", "---\nmarp: true\n---\n\n# One\n\n![x](img/a.png)\n\n---\n\n# Two\n");
+        sandbox.file("talks/img/a.png", "png");
+        fs::create_dir_all(sandbox.0.join("out")).unwrap();
+        // stands in for marp-cli: writes its arguments and the Markdown it got to the output
+        let fake = sandbox.file(
+            "marp.sh",
+            "for a; do [ \"$prev\" = -o ] && out=$a; prev=$a; done\n{ printf '%s\\n' \"$@\"; cat \"$a\"; } > \"$out\"\n",
+        );
+        let mut app = sandbox.app();
+        app.marp = Some(thumbs::Config {
+            cmd: vec!["sh".into(), fake.display().to_string()],
+            extra: vec!["--theme-set".into(), "t.css".into()],
+        });
+        let id = app.open(&source).unwrap();
+        let order = vec![(1, None), (0, Some("# Uno\n\n![x](img/a.png)".to_string()))];
+
+        // a PDF next to the deck, with the notes; the extension is added
+        app.export(id, &order, Format::Pdf, true, &sandbox.0.join("talks/deck"), false).unwrap();
+        assert_eq!(export_result(&app)["state"], "done");
+        let pdf = fs::read_to_string(sandbox.0.join("talks/deck.pdf")).unwrap();
+        assert!(pdf.starts_with("--no-stdin\n--allow-local-files\n--pdf\n--pdf-notes\n-o\n"));
+        assert!(pdf.contains("--theme-set\nt.css\n"));
+        assert!(pdf.contains("# Two\n\n---\n\n# Uno\n\n![x](img/a.png)"));
+        // the tab's file is unchanged and the draft is gone: deck.md, img and deck.pdf
+        assert!(fs::read_to_string(&source).unwrap().contains("# One"));
+        assert_eq!(fs::read_dir(sandbox.0.join("talks")).unwrap().count(), 3);
+
+        // HTML in another folder: image paths are rewritten to work from there
+        app.export(id, &order, Format::Html, false, &sandbox.0.join("out/deck.html"), false).unwrap();
+        assert_eq!(export_result(&app)["path"], json!(sandbox.0.join("out/deck.html").display().to_string()));
+        assert!(fs::read_to_string(sandbox.0.join("out/deck.html")).unwrap().contains("![x](../talks/img/a.png)"));
+
+        // existing files are replaced only when asked; images by their first file
+        let html = sandbox.0.join("out/deck.html");
+        assert_eq!(app.export(id, &order, Format::Html, false, &html, false).unwrap_err(), (409, "exists".to_string()));
+        sandbox.file("out/deck.001.png", "old");
+        let png = sandbox.0.join("out/deck.png");
+        assert_eq!(app.export(id, &order, Format::Png, false, &png, false).unwrap_err().1, "exists");
+        let refuse = |app: &mut App, path: &str| {
+            app.export(id, &order, Format::Pdf, false, &sandbox.0.join(path), true).unwrap_err().1
+        };
+        assert!(refuse(&mut app, "out/deck.pptx").contains(".pdf"));
+        assert_eq!(refuse(&mut app, "out"), "is_dir");
+        assert!(refuse(&mut app, "missing/deck.pdf").contains("folder"));
+
+        // what failed is reported
+        app.marp = Some(thumbs::Config { cmd: vec!["false".into()], extra: Vec::new() });
+        app.export(id, &order, Format::Pptx, false, &sandbox.0.join("out/deck.pptx"), false).unwrap();
+        assert_eq!(export_result(&app)["state"], "error");
+        assert!(app.export.lock().unwrap().done().is_none());
     }
 
     /// Path as the app writes it: on Windows `join("a/b")` would keep the `/`.

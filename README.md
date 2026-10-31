@@ -19,6 +19,8 @@ without touching the content of the slides.
   is redrawn as you type.
 - **Several files in tabs**, with a list of recent files and the last session restored.
 - **Compare and merge**: see which slides differ between two decks and copy them across.
+- **Export** to PDF, PowerPoint, HTML, PNG images or a text file with the speaker notes,
+  pending changes included.
 - **No reformatting**: unedited slides are moved byte for byte; the front matter stays
   where it is.
 - **Safe**: automatic backup, atomic writes and detection of external edits.
@@ -96,6 +98,7 @@ The browser opens with the grid. Rearrange, save with `Ctrl+S` and stop the prog
 | Switch between English and Portuguese | **EN / PT** selector, top right |
 | Save to the file | `Ctrl+S` |
 | Save to another file | **Save as…** or `Ctrl+Shift+S` |
+| Export to PDF, PowerPoint, HTML or images | **Export…** button |
 | Reload the file from disk | `Ctrl+R`, or by itself with **Auto-reload** on |
 | Open another file | `Ctrl+O` or **+ Open** |
 | Edit the front matter | **Front matter** button |
@@ -154,6 +157,28 @@ Marp directives — are shown below it and read aloud by the browser's text-to-s
 The voices come from your browser and operating system, not from marp-order, so which
 languages exist and how good they sound depends on them. Some browsers use online voices,
 which send the notes to the browser vendor. It needs marp-cli, like the editor preview.
+
+### Exporting
+
+**Export…** converts the tab, exactly as it is (pending changes included), with marp-cli
+and the deck's theme. The `.md` file is not touched.
+
+| Format | Result |
+|---|---|
+| PDF | `deck.pdf`; optionally with the speaker notes as PDF comments |
+| PowerPoint (.pptx) | `deck.pptx`, one image per slide, with the speaker notes in the notes pane |
+| HTML | `deck.html`, a presentation that runs in the browser |
+| PNG images | `deck.001.png`, `deck.002.png`…, one per slide |
+| Speaker notes only (.txt) | `deck.txt`, the notes of each slide, separated by `---` |
+
+The dialog suggests the deck's folder and name; change either one, or browse to another
+folder. If the file already exists, you are asked before it is replaced. An HTML saved in
+another folder has its relative image paths rewritten so they still work from there.
+
+The conversion runs in the background and takes a few seconds; when it is done, **Open**
+opens the file (or the folder of the images) with the system's default program. You can
+close the dialog meanwhile: the result shows up as a notification. Slides in a PowerPoint
+file from Marp are images, so their text cannot be edited there.
 
 ### Several files
 

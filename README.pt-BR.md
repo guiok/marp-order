@@ -19,6 +19,8 @@ sem alterar o conteúdo das lâminas.
   resultado é redesenhado enquanto você digita.
 - **Vários arquivos em abas**, com lista de recentes e a última sessão restaurada.
 - **Comparação e merge**: veja quais lâminas diferem entre dois decks e copie de um para o outro.
+- **Exportação** para PDF, PowerPoint, HTML, imagens PNG ou um arquivo de texto com as
+  notas do apresentador, já com as alterações pendentes.
 - **Não reformata nada**: lâminas não editadas são movidas byte a byte; o front-matter
   fica onde está.
 - **Seguro**: backup automático, gravação atômica e detecção de edição externa.
@@ -99,6 +101,7 @@ O navegador abre com a matriz. Reorganize, salve com `Ctrl+S` e encerre o progra
 | Alternar entre português e inglês | seletor **EN / PT**, no canto superior direito |
 | Salvar no arquivo | `Ctrl+S` |
 | Salvar em outro arquivo | **Save as…** ou `Ctrl+Shift+S` |
+| Exportar para PDF, PowerPoint, HTML ou imagens | botão **Export…** |
 | Recarregar o arquivo do disco | `Ctrl+R`, ou sozinho com **Auto-reload** ligado |
 | Abrir outro arquivo | `Ctrl+O` ou **+ Open** |
 | Editar o front-matter | botão **Front matter** |
@@ -160,6 +163,29 @@ As vozes vêm do seu navegador e do sistema operacional, não do marp-order, ent
 idiomas disponíveis e a qualidade dependem deles. Alguns navegadores usam vozes online, que
 enviam as notas ao fabricante do navegador. Precisa do marp-cli, como a pré-visualização do
 editor.
+
+### Exportar
+
+**Export…** converte a aba, exatamente como está (alterações pendentes incluídas), com o
+marp-cli e o tema do deck. O arquivo `.md` não é alterado.
+
+| Formato | Resultado |
+|---|---|
+| PDF | `deck.pdf`; se quiser, com as notas do apresentador como comentários do PDF |
+| PowerPoint (.pptx) | `deck.pptx`, uma imagem por lâmina, com as notas do apresentador no painel de notas |
+| HTML | `deck.html`, uma apresentação que roda no navegador |
+| Imagens PNG | `deck.001.png`, `deck.002.png`…, uma por lâmina |
+| Só as notas do apresentador (.txt) | `deck.txt`, as notas de cada lâmina, separadas por `---` |
+
+O diálogo sugere a pasta e o nome do deck; mude qualquer um dos dois, ou navegue até outra
+pasta. Se o arquivo já existir, você é consultado antes de ele ser substituído. Um HTML
+salvo em outra pasta tem os caminhos relativos das imagens reescritos para continuarem
+funcionando de lá.
+
+A conversão roda em segundo plano e leva alguns segundos; quando termina, **Open** abre o
+arquivo (ou a pasta das imagens) no programa padrão do sistema. Dá para fechar o diálogo
+enquanto isso: o resultado aparece numa notificação. As lâminas de um PowerPoint gerado
+pelo Marp são imagens, então o texto delas não pode ser editado lá.
 
 ### Vários arquivos
 

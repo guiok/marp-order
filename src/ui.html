@@ -159,6 +159,14 @@
   #operror { color: var(--danger); margin: 6px 0 0; }
   #opener.saving .panes { grid-template-columns: minmax(0, 1fr); }
   #opener.saving .panes > section:first-child { display: none; }
+  #exopts, #exstatus { display: none; }
+  #opener.exporting #exopts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 12px; }
+  #opener.exporting #exstatus { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; }
+  #exopts label { display: flex; align-items: center; gap: 6px; }
+  #exopts [hidden] { display: none; }
+  #exopts .hint { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 12px; }
+  #exformat { font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px;
+              background: var(--bg); color: var(--text); }
   #differ { width: min(1100px, 96vw); }
   #differ select { font: inherit; max-width: 30ch; }
   #dfrows { display: grid; gap: 8px; max-height: 74vh; overflow: auto; padding: 10px 14px;
@@ -206,6 +214,7 @@
   <button id="fm" data-tt="Edit the front matter (theme and global settings)" data-t="Front matter"></button>
   <button id="compare" data-tt="Compare with another open file and merge slides" data-t="Compare…"></button>
   <button id="discard" data-tt="Go back to what is saved in the file" data-t="Discard"></button>
+  <button id="export" data-tt="Export the tab, as it is, to PDF, PowerPoint, HTML or images" data-t="Export…"></button>
   <button id="saveas" data-tt="Save the tab, as it is, to another file (Ctrl+Shift+S)" data-t="Save as…"></button>
   <button id="save" class="primary" data-tt="Write the changes to the file (Ctrl+S)"></button>
 </header>
@@ -261,6 +270,19 @@
       <ul id="oprecent"></ul>
     </section>
     <section>
+      <div id="exopts">
+        <label><span data-t="Format"></span>
+          <select id="exformat">
+            <option value="pdf">PDF</option>
+            <option value="pptx">PowerPoint (.pptx)</option>
+            <option value="html" data-t="HTML (presentation for the browser)"></option>
+            <option value="png" data-t="PNG images (one per slide)"></option>
+            <option value="txt" data-t="Speaker notes only (.txt)"></option>
+          </select></label>
+        <label id="exnotes"><input type="checkbox" id="exnotesbox"> <span data-t="Include the speaker notes (as PDF comments)"></span></label>
+        <p class="hint" data-t="The tab is exported as it is, including changes not saved yet."></p>
+        <p class="hint" id="expng" data-t="One file per slide, numbered: name.001.png, name.002.png…"></p>
+      </div>
       <h2 data-t="Browse"></h2>
       <form id="opform">
         <input id="oppath" spellcheck="false" aria-label="Folder or file path">
@@ -268,6 +290,7 @@
       </form>
       <ul id="oplist"></ul>
       <p id="operror"></p>
+      <p id="exstatus"><span id="exmsg"></span><button id="exopen" type="button" hidden></button></p>
     </section>
   </div>
 </dialog>
@@ -494,6 +517,11 @@ function speechChunks(notes) {
   return plain.split(/(?<=[.!?…:;])\s+|\n+/).map((part) => part.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
+/** `path` with the extension of its file name replaced, or added when it has none. */
+function withExtension(path, extension) {
+  return path.replace(/(\.[^.\\/]*)?$/, '.' + extension);
+}
+
 /** Language of the deck (`lang:` in the front matter), or '' when it has none. */
 function deckLang(head) {
   const found = head.match(/^lang:\s*["']?([A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)/m);
@@ -551,6 +579,24 @@ const PT = {
   'Save as…': 'Salvar como…',
   'Save the tab, as it is, to another file (Ctrl+Shift+S)': 'Salvar a aba, como está, em outro arquivo (Ctrl+Shift+S)',
   'Save as': 'Salvar como',
+  'Export…': 'Exportar…',
+  'Export the tab, as it is, to PDF, PowerPoint, HTML or images': 'Exportar a aba, como está, para PDF, PowerPoint, HTML ou imagens',
+  'Export': 'Exportar',
+  'Format': 'Formato',
+  'HTML (presentation for the browser)': 'HTML (apresentação para o navegador)',
+  'PNG images (one per slide)': 'Imagens PNG (uma por lâmina)',
+  'Speaker notes only (.txt)': 'Só as notas do apresentador (.txt)',
+  'Include the speaker notes (as PDF comments)': 'Incluir as notas do apresentador (como comentários no PDF)',
+  'The tab is exported as it is, including changes not saved yet.': 'A aba é exportada como está, inclusive com as alterações ainda não salvas.',
+  'One file per slide, numbered: name.001.png, name.002.png…': 'Um arquivo por lâmina, numerado: nome.001.png, nome.002.png…',
+  '{0} already exists. Replace it?': '{0} já existe. Substituir?',
+  'Another export is still running.': 'Outra exportação ainda está em andamento.',
+  'Exporting… this takes a few seconds.': 'Exportando… isso leva alguns segundos.',
+  'Exported to {0}': 'Exportado para {0}',
+  '{0} images saved in {1}': '{0} imagens salvas em {1}',
+  'The export failed: {0}': 'A exportação falhou: {0}',
+  'Open': 'Abrir',
+  'Open the folder': 'Abrir a pasta',
   '{0} already exists. Replace it? (a copy of it is kept)': '{0} já existe. Substituir? (uma cópia dele é guardada)',
   'That file is open in another tab. Close it there first.': 'Esse arquivo está aberto em outra aba. Feche-o lá primeiro.',
   'Saved as {0}. This tab now shows the new file; the original was not changed.': 'Salvo como {0}. Esta aba agora mostra o arquivo novo; o original não foi alterado.',
@@ -1574,6 +1620,7 @@ function renderTabs() {
   $('#compare').disabled = !S || tabs.length < 2;
   $('#fm').disabled = !S;
   $('#saveas').disabled = !S;
+  $('#export').disabled = !S;
   $('#present').disabled = !S;
 }
 
@@ -1645,19 +1692,22 @@ function focusSaveName() {
   box.scrollLeft = box.scrollWidth;
 }
 
-/** The same dialog opens files (`open`) or picks where to save the tab (`save`). */
+/**
+ * The same dialog opens files (`open`) or picks where to write the tab: as another
+ * Markdown file (`save`) or converted to another format (`export`).
+ */
 function dialogMode(mode) {
-  const saving = mode === 'save';
-  openDlg.classList.toggle('saving', saving);
-  $('#optitle').dataset.t = saving ? 'Save as' : 'Open a presentation';
-  $('#opgo').dataset.t = saving ? 'Save' : 'Go';
+  openDlg.classList.toggle('saving', mode !== 'open');
+  openDlg.classList.toggle('exporting', mode === 'export');
+  $('#optitle').dataset.t = { open: 'Open a presentation', save: 'Save as', export: 'Export' }[mode];
+  $('#opgo').dataset.t = { open: 'Go', save: 'Save', export: 'Export' }[mode];
   for (const el of [$('#optitle'), $('#opgo')]) el.innerHTML = t(el.dataset.t);
 }
 
-function openSaveAs() {
-  if (!S) return;
-  dialogMode('save');
-  saveName = cur.file.replace(/(\.[^.]*)?$/, (ext) => '-copy' + (ext || '.md'));
+/** Opens the dialog on the tab's folder with `name` suggested for the file to write. */
+function pickTarget(mode, name) {
+  dialogMode(mode);
+  saveName = name;
   // the suggestion is there at once; the folder listing arrives a moment later
   const sep = cur.path.includes('/') ? '/' : '\\';
   $('#oppath').value = cur.dir.replace(/[\\/]?$/, sep) + saveName;
@@ -1665,6 +1715,10 @@ function openSaveAs() {
   openDlg.showModal();
   focusSaveName();
   browse(cur.dir);
+}
+
+function openSaveAs() {
+  if (S) pickTarget('save', cur.file.replace(/(\.[^.]*)?$/, (ext) => '-copy' + (ext || '.md')));
 }
 
 async function openDialog() {
@@ -1690,6 +1744,7 @@ async function browse(dir) {
   if (body.file) return openFile(body.file);
   $('#operror').textContent = '';
   const saving = openDlg.classList.contains('saving');
+  const exporting = openDlg.classList.contains('exporting');
   const sep = body.dir.includes('/') || !body.dir.includes('\\') ? '/' : '\\';
   // what the user typed while the listing was on its way is not overwritten
   if ($('#oppath').value === typed) {
@@ -1700,7 +1755,9 @@ async function browse(dir) {
   const pick = (entry) => (saving
     ? () => { saveName = entry.name; $('#oppath').value = entry.path; focusSaveName(); }
     : () => openFile(entry.path));
-  const list = body.entries.map((entry) => (entry.dir
+  // an export only needs a folder: the Markdown files there are not targets
+  const entries = body.entries.filter((entry) => entry.dir || !exporting);
+  const list = entries.map((entry) => (entry.dir
     ? fileButton('📁 ' + entry.name, '', () => browse(entry.path))
     : fileButton(entry.name, '', pick(entry))));
   if (body.parent) list.unshift(fileButton('📁 ..', '', () => browse(body.parent)));
@@ -1724,11 +1781,102 @@ $('#opform').onsubmit = (e) => {
   e.preventDefault();
   const path = $('#oppath').value.trim();
   if (!path) return;
-  if (openDlg.classList.contains('saving')) saveAs(path, false); else browse(path);
+  if (openDlg.classList.contains('exporting')) exportTo(path, false);
+  else if (openDlg.classList.contains('saving')) saveAs(path, false);
+  else browse(path);
 };
 $('#saveas').onclick = openSaveAs;
 $('#opclose').onclick = () => openDlg.close();
 $('#open').onclick = $('#openempty').onclick = openDialog;
+
+// ---- export ------------------------------------------------------------------
+
+let exportRunning = false;
+
+function openExport() {
+  if (!S) return;
+  if (!exportRunning) {
+    $('#exmsg').textContent = '';
+    $('#exopen').hidden = true;
+  }
+  exportOptions();
+  pickTarget('export', withExtension(cur.file, $('#exformat').value));
+}
+
+/** Shows the options and notes that apply to the chosen format. */
+function exportOptions() {
+  const format = $('#exformat').value;
+  $('#exnotes').hidden = format !== 'pdf';
+  $('#expng').hidden = format !== 'png';
+}
+
+/** Asks marp-cli to convert the tab as it is, unsaved changes included. */
+async function exportTo(path, overwrite) {
+  const format = $('#exformat').value;
+  if (!exportRunning) {
+    $('#exmsg').textContent = '';
+    $('#exopen').hidden = true;
+  }
+  let res, body;
+  try {
+    res = await post('/api/export', {
+      doc: cur.doc, generation: S.generation, slides: items.map(entry), path, format,
+      notes: $('#exnotesbox').checked, overwrite: !!overwrite,
+    });
+    body = await res.json();
+  } catch {
+    return void ($('#operror').textContent = t('Could not reach marp-order.'));
+  }
+  if (body.error === 'is_dir') return browse(path);
+  if (body.error === 'exists') {
+    // images are numbered after the name, and the first one is what already exists
+    const name = withExtension(path.split(/[\\/]/).pop(), format === 'png' ? '001.png' : format);
+    if (confirm(t('{0} already exists. Replace it?', name))) return exportTo(path, true);
+    return;
+  }
+  if (body.error === 'busy') return void ($('#operror').textContent = t('Another export is still running.'));
+  if (!res.ok) return void ($('#operror').textContent = body.error);
+  $('#operror').textContent = '';
+  followExport();
+}
+
+/** Waits for marp-cli; if the dialog was closed in the meantime, the result comes as a toast. */
+async function followExport() {
+  exportRunning = true;
+  $('#exopen').hidden = true;
+  $('#exmsg').textContent = t('Exporting… this takes a few seconds.');
+  let status;
+  do {
+    await new Promise((done) => setTimeout(done, 500));
+    try {
+      status = await (await fetch('/api/export')).json();
+    } catch {
+      status = { state: 'error', message: t('Could not reach marp-order.') };
+    }
+  } while (status.state === 'running');
+  exportRunning = false;
+  const done = status.state === 'done', images = status.format === 'png';
+  const message = !done ? t('The export failed: {0}', status.message)
+    : images ? t('{0} images saved in {1}', status.slides, status.path)
+      : t('Exported to {0}', status.path);
+  $('#exmsg').textContent = message;
+  $('#exopen').dataset.t = images ? 'Open the folder' : 'Open';
+  $('#exopen').textContent = t($('#exopen').dataset.t);
+  $('#exopen').hidden = !done;
+  if (!openDlg.open || !openDlg.classList.contains('exporting')) toast(message);
+}
+
+$('#export').onclick = openExport;
+$('#exopen').onclick = () => post('/api/export/open');
+$('#exformat').onchange = () => {
+  const format = $('#exformat').value;
+  saveName = withExtension(saveName, format);
+  $('#oppath').value = withExtension($('#oppath').value.trim(), format);
+  exportOptions();
+  try { localStorage.setItem('marp-order-export', format); } catch {}
+};
+try { $('#exformat').value = localStorage.getItem('marp-order-export') || 'pdf'; } catch {}
+if (!$('#exformat').value) $('#exformat').value = 'pdf';
 
 // ---- compare and merge -------------------------------------------------------
 

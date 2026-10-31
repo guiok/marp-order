@@ -8,7 +8,8 @@ keeps, per tab, the order and the edits that are not saved yet and sends them on
 presentation.md ──► deck.rs (parse) ──► main.rs (state + HTTP) ◄──► ui.html (browser)
         ▲                                   │         │
         └──────── deck.rs (compose) ◄───────┘         ├──► thumbs.rs ──► marp-cli ──► JPEGs
-                                                      └──► preview.rs ─► marp --watch ─► HTML
+                                                      ├──► preview.rs ─► marp --watch ─► HTML
+                                                      └──► export.rs ──► marp-cli ──► PDF, PPTX…
 ```
 
 | File | Role |
@@ -19,6 +20,7 @@ presentation.md ──► deck.rs (parse) ──► main.rs (state + HTTP) ◄�
 | `src/cache.rs` | Thumbnails kept on disk between runs. |
 | `src/links.rs` | Rewrites relative paths of slides copied between folders. |
 | `src/preview.rs` | Live preview for the editor, with a persistent `marp --watch`. |
+| `src/export.rs` | Converts the tab to PDF, PPTX, HTML, PNG or a text file of the notes, in a thread. |
 | `src/ui.html` | Interface (plain HTML, CSS and JavaScript), embedded in the binary. |
 
 Dependencies: `tiny_http` and `serde_json`.
@@ -180,6 +182,24 @@ marp-cli in `--watch` mode opens its own websocket server for reload notificatio
 the first free port from 37717 up, on all network interfaces. marp-cli has no option to
 change that. marp-order does not use the websocket, and it carries no deck content.
 
+## Export
+
+`POST /api/export` composes the tab as it is, like a save, and hands it to a thread in
+`export.rs`; the request returns at once, because the server answers one request at a
+time and a PDF takes seconds. The thread writes the draft next to the deck
+(`.<name>.marp-order.export.md`, deleted afterwards) so relative images resolve, runs
+marp-cli with `--pdf`, `--pptx`, `--images png` or `--notes` (none for HTML) and the
+user's extra arguments, and records the result in a status the interface polls with
+`GET /api/export`. Only one export runs at a time.
+
+For HTML the image paths are rewritten with `links.rs` to work from the target folder,
+since the browser resolves them from the HTML file; the other formats are rendered by
+Chrome from the draft, next to the deck. Images are named by marp-cli after the target
+(`deck.001.png`), so the overwrite check looks at the first one.
+
+`POST /api/export/open` opens the last result with the system's default program. It
+takes no path: it can only open what the export wrote.
+
 ## HTTP API
 
 | Route | Purpose |
@@ -198,6 +218,9 @@ change that. marp-order does not use the websocket, and it carries no deck conte
 | `POST /api/preview` | `{doc, generation, slides, index, head?}` — converts the draft; returns the page |
 | `POST /api/save_as` | `{doc, generation, slides, path, overwrite}` — writes the tab to another file, which the tab then shows |
 | `POST /api/draft` | `{doc, generation, slides}` — requests thumbnails of unsaved slides |
+| `POST /api/export` | `{doc, generation, slides, format, path, notes, overwrite}` — starts converting the tab (`pdf`, `pptx`, `html`, `png`, `txt`) |
+| `GET /api/export` | Status of the export: `running`, `done` (with `path`) or `error` |
+| `POST /api/export/open` | Opens the last exported file, or folder of images, with the default program |
 | `POST /api/head` | `{doc, head, force}` — writes a new front matter |
 | `POST /api/import` | `{from, to, texts}` — adjusts relative paths of copied slides |
 | `POST /api/reload` | `{doc}` — re-reads the file from disk |

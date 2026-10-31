@@ -153,3 +153,10 @@ test('sortVoices puts the voices of the wanted language first', () => {
   assert.deepEqual(ui.sortVoices(voices, 'pt-BR').map((v) => v.lang), ['pt_BR', 'pt-BR', 'pt-PT', 'en-US', 'es-ES']);
   assert.deepEqual(ui.sortVoices(voices, 'en').map((v) => v.lang)[0], 'en-US');
 });
+
+test('withExtension swaps or adds the extension of the file name only', () => {
+  assert.equal(ui.withExtension('/talks/atlas.md', 'pdf'), '/talks/atlas.pdf');
+  assert.equal(ui.withExtension('/talks/v1.2/atlas', 'pdf'), '/talks/v1.2/atlas.pdf');
+  assert.equal(ui.withExtension('C:\\talks\\atlas.final.pdf', 'png'), 'C:\\talks\\atlas.final.png');
+  assert.equal(ui.withExtension('atlas.png', '001.png'), 'atlas.001.png');
+});
